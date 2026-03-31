@@ -1,7 +1,4 @@
-import httpx
-import json
-from typing import Dict, List, Any, Optional
-import os
+from typing import Dict, Any, Optional, Callable
 from fastapi import HTTPException
 from app.config.settings import TAVILY_API_KEY
 from tavily import TavilyClient
@@ -10,7 +7,7 @@ class WebSearchClient:
     网络搜索客户端，用于进行互联网搜索
     """
     
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, tavily_client_factory: Optional[Callable[..., Any]] = None):
         """
         初始化搜索客户端
         
@@ -20,8 +17,8 @@ class WebSearchClient:
         self.api_key = api_key or TAVILY_API_KEY
         if not self.api_key:
             raise ValueError("未配置Tavily API密钥，请在环境变量中设置TAVILY_API_KEY或在初始化时提供")
-        print(self.api_key)
         self.base_url = "https://api.tavily.com/v1"
+        self.tavily_client_factory = tavily_client_factory or TavilyClient
     
     async def search(self, query: str, search_depth: str = "basic", max_results: int = 5) -> Dict[str, Any]:
         """
@@ -38,8 +35,7 @@ class WebSearchClient:
         try:
             
 
-            # Step 1. Instantiating your TavilyClient
-            tavily_client = TavilyClient(api_key= self.api_key)
+            tavily_client = self.tavily_client_factory(api_key=self.api_key)
 
             # Step 2. Executing a simple search query
             response = tavily_client.search(query)
@@ -61,10 +57,8 @@ class WebSearchClient:
             #         "error": f"搜索请求失败: {response.status_code}",
             #         "results": []
             #     }
-            print(response)
             return response
         except Exception as e:
-            print(f"执行网络搜索时出错: {str(e)}")
             return {
                 "success": False,
                 "error": f"执行搜索时出错: {str(e)}",
@@ -103,7 +97,7 @@ class WebSearchClient:
 # 创建一个全局实例，方便调用
 web_search_client = None
 
-def get_web_search_client() -> WebSearchClient:
+def get_web_search_client(client_factory: Optional[Callable[..., WebSearchClient]] = None) -> WebSearchClient:
     """
     获取网络搜索客户端实例
     
@@ -114,9 +108,9 @@ def get_web_search_client() -> WebSearchClient:
     
     if web_search_client is None:
         try:
-            web_search_client = WebSearchClient()
+            factory = client_factory or WebSearchClient
+            web_search_client = factory()
         except ValueError as e:
-            print(f"初始化网络搜索客户端失败: {str(e)}")
             raise HTTPException(status_code=500, detail=f"网络搜索服务不可用: {str(e)}")
     
     return web_search_client

@@ -160,3 +160,35 @@
 - 是什么：把“覆盖率统计 + 问题发现 + 代码修复”串成闭环流程。
 - 为什么：仅有通过/失败无法衡量测试质量，覆盖率与缺口分析能指导测试投入优先级。
 - 怎么优化：持续按关键模块维护覆盖率基线（≥80%），每次新增测试都要求至少覆盖一个边界/异常路径，并把失败修复过程沉淀到报告中。
+
+# 阶段6（可选）：可测试性重构与Mock（冲刺100分）
+
+## 不可测试点识别与原因
+- 目标点：`app/utils/web_search.py` 中 `WebSearchClient.search()` 与 `get_web_search_client()`。
+- 不可测试原因：
+  - `search()` 内部直接实例化 `TavilyClient`，强耦合外部网络客户端，单测无法稳定隔离。
+  - `get_web_search_client()` 固定直接构造 `WebSearchClient`，难以在测试中注入替身对象验证异常路径与单例行为。
+
+## 重构前后对比
+- 重构前：
+  - `WebSearchClient.__init__` 仅接收 `api_key`。
+  - `search()` 内部硬编码 `TavilyClient(api_key=...)`。
+  - `get_web_search_client()` 无法注入自定义工厂。
+- 重构后（保持行为兼容）：
+  - `WebSearchClient.__init__` 新增 `tavily_client_factory` 可选参数，默认仍为 `TavilyClient`。
+  - `search()` 改为通过注入工厂创建客户端，默认路径行为不变。
+  - `get_web_search_client()` 新增可选 `client_factory`，默认仍创建 `WebSearchClient`，但测试可注入替身。
+
+## 可测试性提升分析
+- 新增 `tests/utils/test_web_search_utils.py`，使用 Mock/替身类覆盖：
+  - 外部客户端成功返回路径；
+  - 外部客户端抛异常的回退路径；
+  - 文本格式化空结果/非空结果路径；
+  - 单例缓存与注入工厂路径；
+  - 工厂抛 `ValueError` 转换为 `HTTPException` 路径。
+- 结果：无需真实网络请求即可稳定验证核心行为，降低测试脆弱性并提升回归速度。
+
+## 阶段优化点
+- 是什么：将外部依赖从“内部硬编码创建”重构为“可注入工厂”。
+- 为什么：强耦合外部客户端会导致单测不稳定、难覆盖异常分支，回归成本高。
+- 怎么优化：在不改变默认行为的前提下为构造点提供依赖注入入口，并配合 Mock 覆盖关键分支。
