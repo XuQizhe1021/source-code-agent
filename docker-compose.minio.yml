@@ -1,0 +1,14 @@
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: source-code-agent-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: xkk
+      MINIO_ROOT_PASSWORD: xkkxkkxkk
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ./volumes/minio:/data
+    restart: unless-stopped

@@ -71,3 +71,40 @@
    - 出现 `Uvicorn running on http://0.0.0.0:8000`
    - 出现 `Application startup complete`
 5. 文档验证：访问 `http://127.0.0.1:8000/docs`，期望 `Status=200` 且页面包含 `Swagger UI`。
+
+# 阶段3：迁移到 Poetry 并重构环境
+
+## 执行过程
+1. 使用 `python -m poetry init -n` 初始化 Poetry 工程，生成 `pyproject.toml`。
+2. 分批迁移主依赖并生成 `poetry.lock`，在迁移中处理版本冲突：
+   - `neo4j-graphrag==1.3.0` 约束 `neo4j<6`，因此将 `neo4j` 调整为 `>=5.17,<6.0`。
+   - `magic-pdf` 与 `pydantic` 存在版本约束差异，因此将 `pydantic` 调整到 `>=2.10,<2.11`。
+   - `mineru` 与 `neo4j-graphrag` 在 `json-repair` 版本上互斥，当前锁定方案优先保证项目可运行与核心链路可用，暂不纳入 `mineru`。
+3. 添加开发依赖组：`pytest`、`pytest-asyncio`。
+4. 补齐 MinIO 运行环境：
+   - 新增 `docker-compose.minio.yml` 并拉起容器；
+   - 更新 `.env.example` 的 MinIO 配置项；
+   - 验证 `http://127.0.0.1:9000` 可访问（200）。
+5. 使用 `python -m poetry run python run.py` 启动验证，并通过 `/docs` 连通性验证。
+
+## 迁移前后对比
+- 迁移前：`requirements.txt + pip`，缺少统一锁文件，跨机器/跨时间安装结果可能漂移，冲突定位成本高。
+- 迁移后：`pyproject.toml + poetry.lock`，依赖解析结果可复现，主依赖与开发依赖分层清晰，环境构建稳定性更高。
+
+## 依赖管理优化价值
+- 可复现：锁文件固定完整依赖树，减少“我这里能跑你那里不行”。
+- 可维护：依赖冲突在解析阶段暴露，便于集中修复而不是运行时踩坑。
+- 可协作：`dev` 依赖分组后，测试工具不会污染生产依赖面。
+- 可演进：后续可继续拆分可选功能依赖组（如图谱、文档解析）降低基础安装成本。
+
+## 阶段优化点
+- 是什么：建立“Poetry 锁定 + 分组依赖 + MinIO 一键拉起”的标准化开发环境。
+- 为什么：原有 requirements 流程存在版本漂移、冲突滞后暴露、外部服务缺失导致的运行告警。
+- 怎么优化：统一使用 Poetry 管理依赖，新增 MinIO compose 文件与 `.env.example` 配置模板，并通过 `poetry run` 做启动验收。
+
+## 启动流程（Poetry 主流程）
+1. `python -m poetry install`
+2. `Copy-Item .env.example .env`
+3. `docker compose -f docker-compose.minio.yml up -d`
+4. `python -m poetry run python run.py`
+5. 访问 `http://127.0.0.1:8000/docs` 验证服务可用

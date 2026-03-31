@@ -20,18 +20,16 @@ git clone <repository-url>
 cd cogmait-backend
 ```
 
-2. 创建虚拟环境（推荐）
+2. 安装 Poetry
 
 ```bash
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-venv\Scripts\activate  # Windows
+python -m pip install --user poetry
 ```
 
 3. 安装依赖
 
 ```bash
-pip install -r requirements.txt
+python -m poetry install
 ```
 
 ## 配置
@@ -47,7 +45,7 @@ PROJECT_NAME=CogmAIt
 SECRET_KEY=your-secret-key
 
 # CORS设置
-CORS_ORIGINS=http://localhost:3000,http://localhost:5173
+CORS_ORIGINS=["http://localhost:3000","http://localhost:5173","http://localhost:8080","*"]
 
 # 数据库设置
 DATABASE_URI=sqlite:///./cogmait.db
@@ -55,12 +53,24 @@ DATABASE_URI=sqlite:///./cogmait.db
 # 模型API密钥（可选）
 OPENAI_API_KEY=your-openai-api-key
 ANTHROPIC_API_KEY=your-anthropic-api-key
+
+# MinIO设置
+MINIO_ENDPOINT=localhost:9000
+MINIO_ACCESS_KEY=xkk
+MINIO_SECRET_KEY=xkkxkkxkk
+MINIO_SECURE=false
+```
+
+2. 启动 MinIO（推荐）
+
+```bash
+docker compose -f docker-compose.minio.yml up -d
 ```
 
 ## 运行
 
 ```bash
-python run.py
+python -m poetry run python run.py
 ```
 
 服务将在 http://localhost:8000 启动，API文档可在 http://localhost:8000/docs 访问。
@@ -157,7 +167,7 @@ class NewProvider(ModelProvider):
 ## 启动服务
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+python -m poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ## Neo4j-GraphRAG集成
