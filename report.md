@@ -108,3 +108,10 @@
 3. `docker compose -f docker-compose.minio.yml up -d`
 4. `python -m poetry run python run.py`
 5. 访问 `http://127.0.0.1:8000/docs` 验证服务可用
+
+## 阶段3补充：依赖清理与回归
+- 本轮先扫描全仓导入与运行路径，再清理高置信度未使用依赖，并同步更新 `pyproject.toml` 与 `poetry.lock`。
+- 已删除依赖：`alembic`、`psycopg2-binary`、`google-genai`、`neo4j-graphrag`、`fastmcp`。
+- 清理后启动回归时出现 `ModuleNotFoundError: sse_starlette`，说明该包虽由其他包间接提供过，但项目代码存在直接导入，因此已改为显式主依赖补回：`sse-starlette`。
+- `.gitignore` 持续维护：新增 `.ruff_cache/`、`*.db`、`*.sqlite3`，避免本地缓存与数据库文件误提交。
+- 回归结果：`python -m poetry run python run.py` 可启动，`/docs` 可访问并返回 `200`，说明未误删真实运行所需依赖。

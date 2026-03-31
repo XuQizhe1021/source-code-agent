@@ -29,7 +29,10 @@ __pycache__/
 htmlcov/
 .venv/
 venv/
+.ruff_cache/
 .env
+*.db
+*.sqlite3
 uploads/
 volumes/
 data/
