@@ -1,0 +1,8 @@
+{
+  "issue": "ISSUE-003",
+  "method": "GET",
+  "path": "/api/agents/1/share-chat/test",
+  "http_status": 200,
+  "body_code": 404,
+  "body_text": "{\"code\":404,\"data\":{\"detail\":\"智能体不存在或分享链接无效\"},\"msg\":\"智能体不存在或分享链接无效\"}"
+}

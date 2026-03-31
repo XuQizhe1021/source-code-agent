@@ -31,6 +31,7 @@ GET /api/agents/share/{token}
 
 ## 7) 证据引用（evidence 文件名）
 - get-api-agents-share-token.json
+- server_startup.log
 
 ## 8) 影响范围与严重级别（Critical/High/Medium/Low）
 - 严重级别：High

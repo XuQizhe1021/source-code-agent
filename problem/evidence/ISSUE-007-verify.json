@@ -1,0 +1,8 @@
+{
+  "issue": "ISSUE-007",
+  "method": "GET",
+  "path": "/api/files/markdown-image/test/path.png",
+  "http_status": 200,
+  "body_code": 400,
+  "body_text": "{\"code\":400,\"data\":{\"detail\":\"无法确定图片所属的文件ID\"},\"msg\":\"无法确定图片所属的文件ID\"}"
+}

@@ -6,6 +6,7 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
+import bcrypt
 
 from app.core.config import settings
 from app.db.session import get_db
@@ -15,7 +16,7 @@ from app.utils import utc_to_cst
 from app.db.base import get_cn_datetime
 
 # 密码上下文
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt_sha256", "bcrypt"], deprecated="auto")
 # OAuth2 密码授权
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_STR}/auth/login")
 
@@ -30,12 +31,20 @@ ROLE_PERMISSIONS = {
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """验证密码是否匹配"""
-    return pwd_context.verify(plain_password, hashed_password)
+    if hashed_password and hashed_password.startswith("$2"):
+        try:
+            return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
+        except Exception:
+            return False
+    try:
+        return pwd_context.verify(plain_password, hashed_password)
+    except Exception:
+        return False
 
 
 def get_password_hash(password: str) -> str:
     """获取密码哈希值"""
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:

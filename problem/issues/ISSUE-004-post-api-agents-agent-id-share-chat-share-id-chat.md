@@ -31,6 +31,7 @@ POST /api/agents/{agent_id}/share-chat/{share_id}/chat
 
 ## 7) 证据引用（evidence 文件名）
 - post-api-agents-agent-id-share-chat-share-id-chat.json
+- server_startup.log
 
 ## 8) 影响范围与严重级别（Critical/High/Medium/Low）
 - 严重级别：High

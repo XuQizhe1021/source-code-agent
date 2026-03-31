@@ -639,13 +639,13 @@ def get_agent_by_share_token(db: Session, token: str) -> Optional[Agent]:
     """
     # 先查找新版的share_token记录
     share_token = db.query(AgentShareToken).join(Agent, AgentShareToken.agent_id == Agent.id).filter(AgentShareToken.token == token).first()
-    # if share_token:
-        # 更新使用次数和最后使用时间
+    if not share_token:
+        return None
+    if not share_token.is_active:
+        return None
     share_token.usage_count += 1
     share_token.last_used_at = datetime.now()
     db.commit()
-        
-        # 返回关联的智能体
     return share_token.agent
     
     # 兼容旧版本：查找具有该分享令牌的智能体

@@ -1,0 +1,8 @@
+{
+  "issue": "ISSUE-008",
+  "method": "GET",
+  "path": "/api/files/img/test/path.png",
+  "http_status": 200,
+  "body_code": 404,
+  "body_text": "{\"code\":404,\"data\":{\"detail\":\"找不到请求的图片\"},\"msg\":\"找不到请求的图片\"}"
+}

@@ -1301,6 +1301,8 @@ async def direct_download_from_minio(
                 media_type=media_type
             )
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"获取MinIO文件失败: bucket={bucket}, object_name={object_name}, error={str(e)}")
         # 返回一般错误，不暴露具体异常信息
@@ -1461,6 +1463,8 @@ async def serve_image(
             media_type=content_type
         )
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"获取图片失败: file_id={file_id}, image_name={image_name}, error={str(e)}")
         raise HTTPException(status_code=500, detail="图片访问失败")
@@ -1558,6 +1562,8 @@ async def serve_markdown_image(path: str):
             media_type=content_type
         )
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"获取Markdown图片失败: path={path}, error={str(e)}")
         raise HTTPException(status_code=500, detail="图片访问失败")
@@ -1671,6 +1677,8 @@ async def serve_image_smart(
         # 如果都找不到
         raise HTTPException(status_code=404, detail="找不到请求的图片")
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"智能图片服务失败: path={path}, error={str(e)}")
         raise HTTPException(status_code=500, detail="图片服务错误，请稍后再试")
@@ -1902,4 +1910,3 @@ async def preview_file(
     except Exception as e:
         logger.error(f"预览文件失败: file_id={file_id}, error={str(e)}")
         raise HTTPException(status_code=500, detail="文件预览失败，请重试或联系管理员")
-

@@ -1,0 +1,8 @@
+{
+  "issue": "ISSUE-001",
+  "method": "POST",
+  "path": "/api/auth/register",
+  "http_status": 200,
+  "body_code": 200,
+  "body_text": "{\"code\":200,\"data\":{\"username\":\"fix_user_1774957865\",\"name\":\"Fix User\",\"email\":\"fix_user_1774957865@example.com\",\"phone\":null,\"role\":\"user\",\"department\":null,\"position\":null,\"avatar\":null,\"id\":\"1394b866c7584036b600366e2b0153de\",\"status\":\"active\",\"lastLogin\":\"\",\"created\":\"2026-04-01T03:51:06\"},\"msg\":\"操作成功\"}"
+}

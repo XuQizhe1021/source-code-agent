@@ -1,0 +1,8 @@
+{
+  "issue": "ISSUE-005",
+  "method": "GET",
+  "path": "/api/files/minio-download/test/test",
+  "http_status": 200,
+  "body_code": 404,
+  "body_text": "{\"code\":404,\"data\":{\"detail\":\"文件不存在\"},\"msg\":\"文件不存在\"}"
+}

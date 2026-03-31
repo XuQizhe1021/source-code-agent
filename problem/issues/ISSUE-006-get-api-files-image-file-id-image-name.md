@@ -31,6 +31,7 @@ GET /api/files/image/{file_id}/{image_name}
 
 ## 7) 证据引用（evidence 文件名）
 - get-api-files-image-file-id-image-name.json
+- server_startup.log
 
 ## 8) 影响范围与严重级别（Critical/High/Medium/Low）
 - 严重级别：High

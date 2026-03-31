@@ -2375,6 +2375,8 @@ async def share_chat_with_agent(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=str(e)
         )
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"分享聊天处理失败: {e}")
         traceback.print_exc()

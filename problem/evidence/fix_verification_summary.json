@@ -1,0 +1,66 @@
+[
+  {
+    "issue": "ISSUE-001",
+    "method": "POST",
+    "path": "/api/auth/register",
+    "http_status": 200,
+    "body_code": 200,
+    "body_text": "{\"code\":200,\"data\":{\"username\":\"fix_user_1774957865\",\"name\":\"Fix User\",\"email\":\"fix_user_1774957865@example.com\",\"phone\":null,\"role\":\"user\",\"department\":null,\"position\":null,\"avatar\":null,\"id\":\"1394b866c7584036b600366e2b0153de\",\"status\":\"active\",\"lastLogin\":\"\",\"created\":\"2026-04-01T03:51:06\"},\"msg\":\"操作成功\"}"
+  },
+  {
+    "issue": "ISSUE-002",
+    "method": "GET",
+    "path": "/api/agents/share/test",
+    "http_status": 200,
+    "body_code": 404,
+    "body_text": "{\"code\":404,\"data\":{\"detail\":\"智能体不存在或分享链接无效\"},\"msg\":\"智能体不存在或分享链接无效\"}"
+  },
+  {
+    "issue": "ISSUE-003",
+    "method": "GET",
+    "path": "/api/agents/1/share-chat/test",
+    "http_status": 200,
+    "body_code": 404,
+    "body_text": "{\"code\":404,\"data\":{\"detail\":\"智能体不存在或分享链接无效\"},\"msg\":\"智能体不存在或分享链接无效\"}"
+  },
+  {
+    "issue": "ISSUE-004",
+    "method": "POST",
+    "path": "/api/agents/1/share-chat/test/chat",
+    "http_status": 200,
+    "body_code": 404,
+    "body_text": "{\"code\":404,\"data\":{\"detail\":\"智能体不存在或分享链接无效\"},\"msg\":\"智能体不存在或分享链接无效\"}"
+  },
+  {
+    "issue": "ISSUE-005",
+    "method": "GET",
+    "path": "/api/files/minio-download/test/test",
+    "http_status": 200,
+    "body_code": 404,
+    "body_text": "{\"code\":404,\"data\":{\"detail\":\"文件不存在\"},\"msg\":\"文件不存在\"}"
+  },
+  {
+    "issue": "ISSUE-006",
+    "method": "GET",
+    "path": "/api/files/image/1/test.png",
+    "http_status": 200,
+    "body_code": 404,
+    "body_text": "{\"code\":404,\"data\":{\"detail\":\"图片不存在\"},\"msg\":\"图片不存在\"}"
+  },
+  {
+    "issue": "ISSUE-007",
+    "method": "GET",
+    "path": "/api/files/markdown-image/test/path.png",
+    "http_status": 200,
+    "body_code": 400,
+    "body_text": "{\"code\":400,\"data\":{\"detail\":\"无法确定图片所属的文件ID\"},\"msg\":\"无法确定图片所属的文件ID\"}"
+  },
+  {
+    "issue": "ISSUE-008",
+    "method": "GET",
+    "path": "/api/files/img/test/path.png",
+    "http_status": 200,
+    "body_code": 404,
+    "body_text": "{\"code\":404,\"data\":{\"detail\":\"找不到请求的图片\"},\"msg\":\"找不到请求的图片\"}"
+  }
+]
