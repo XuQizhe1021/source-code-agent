@@ -115,3 +115,22 @@
 - 清理后启动回归时出现 `ModuleNotFoundError: sse_starlette`，说明该包虽由其他包间接提供过，但项目代码存在直接导入，因此已改为显式主依赖补回：`sse-starlette`。
 - `.gitignore` 持续维护：新增 `.ruff_cache/`、`*.db`、`*.sqlite3`，避免本地缓存与数据库文件误提交。
 - 回归结果：`python -m poetry run python run.py` 可启动，`/docs` 可访问并返回 `200`，说明未误删真实运行所需依赖。
+
+# 阶段4：建立基础测试安全网（pytest）
+
+## 用例设计思路
+- 选取 `app/utils` 中低耦合但高复用的核心函数，优先覆盖响应构造、时间处理、图标映射三类基础能力。
+- 以“Happy Path + 边界/异常路径”双轨设计：
+  - Happy Path：标准输入下返回结构、默认值与格式是否符合预期；
+  - 边界/异常：`None`、未知映射、非目标后缀、时区输入差异等场景下行为是否稳定。
+- 本阶段共覆盖 9 个测试点，涉及至少 5 个核心函数：`standard_response`、`success_response`、`error_response`、`utc_to_cst`、`format_datetime`、`get_icon_filename`、`extract_icon_from_url` 等。
+
+## 失败到通过的修复过程
+1. 首次执行 `python -m poetry run pytest -v` 失败，报错 `ModuleNotFoundError: No module named 'app'`，属于测试运行路径未包含项目根目录。
+2. 新增 `tests/conftest.py`，在测试启动时将项目根目录加入 `sys.path`。
+3. 二次执行 `python -m poetry run pytest -v` 全部通过（9 passed）。
+
+## 阶段优化点
+- 是什么：建立可重复执行的基础测试安全网，覆盖核心工具函数的主路径与边界路径。
+- 为什么：`app/utils` 被多处业务调用，缺少测试会导致小改动引发隐蔽回归，且不易第一时间发现。
+- 怎么优化：以轻量单测先覆盖稳定纯函数，再逐步扩展到更高耦合模块；同时固定 `poetry run pytest -v` 作为每阶段的回归门槛。
