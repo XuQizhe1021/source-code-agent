@@ -36,3 +36,7 @@ venv/
 uploads/
 volumes/
 data/
+*.tmp
+*.temp
+*.bak
+problem/**/__pycache__/

@@ -155,6 +155,10 @@ def get_file_stream(bucket_name, object_name):
         )
         return response
     except S3Error as e:
+        code = getattr(e, "code", "")
+        if code in {"NoSuchKey", "NoSuchBucket", "NoSuchObject"}:
+            logger.warning(f"对象不存在: bucket={bucket_name}, object_name={object_name}, code={code}")
+            return None
         logger.error(f"❌ 获取文件失败: {e}")
         return None
 
