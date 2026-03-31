@@ -1,0 +1,27 @@
+{
+  "path": "/api/auth/logout",
+  "method": "POST",
+  "auth_required": false,
+  "normal": {
+    "status": 200,
+    "body": "{\"code\":200,\"data\":{\"code\":200,\"message\":\"退出成功\"},\"msg\":\"操作成功\"}"
+  },
+  "invalid": {
+    "status": 200,
+    "body": "{\"code\":200,\"data\":{\"code\":200,\"message\":\"退出成功\"},\"msg\":\"操作成功\"}"
+  },
+  "boundary": {
+    "status": 200,
+    "body": "{\"code\":200,\"data\":{\"code\":200,\"message\":\"退出成功\"},\"msg\":\"操作成功\"}"
+  },
+  "auth_missing": null,
+  "auth_invalid": null,
+  "request": {
+    "url": "http://127.0.0.1:8000/api/auth/logout",
+    "query": {},
+    "headers": {},
+    "json": null,
+    "data": null,
+    "has_files": false
+  }
+}

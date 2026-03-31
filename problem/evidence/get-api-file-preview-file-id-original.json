@@ -1,0 +1,29 @@
+{
+  "path": "/api/file-preview/{file_id}/original",
+  "method": "GET",
+  "auth_required": false,
+  "normal": {
+    "status": 200,
+    "body": "{\"code\":404,\"data\":{\"detail\":\"文件不存在\"},\"msg\":\"文件不存在\"}"
+  },
+  "invalid": {
+    "status": 200,
+    "body": "{\"code\":404,\"data\":{\"detail\":\"文件不存在\"},\"msg\":\"文件不存在\"}"
+  },
+  "boundary": {
+    "status": 200,
+    "body": "{\"code\":404,\"data\":{\"detail\":\"文件不存在\"},\"msg\":\"文件不存在\"}"
+  },
+  "auth_missing": null,
+  "auth_invalid": null,
+  "request": {
+    "url": "http://127.0.0.1:8000/api/file-preview/1/original",
+    "query": {
+      "token": "test"
+    },
+    "headers": {},
+    "json": null,
+    "data": null,
+    "has_files": false
+  }
+}

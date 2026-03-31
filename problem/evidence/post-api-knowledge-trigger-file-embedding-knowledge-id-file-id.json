@@ -1,0 +1,27 @@
+{
+  "path": "/api/knowledge/trigger_file_embedding/{knowledge_id}/{file_id}",
+  "method": "POST",
+  "auth_required": false,
+  "normal": {
+    "status": 200,
+    "body": "{\"code\":404,\"data\":{\"message\":\"知识库 ID 1 不存在\"},\"msg\":\"请求失败\"}"
+  },
+  "invalid": {
+    "status": 200,
+    "body": "{\"code\":404,\"data\":{\"message\":\"知识库 ID 1 不存在\"},\"msg\":\"请求失败\"}"
+  },
+  "boundary": {
+    "status": 200,
+    "body": "{\"code\":404,\"data\":{\"message\":\"知识库 ID 1 不存在\"},\"msg\":\"请求失败\"}"
+  },
+  "auth_missing": null,
+  "auth_invalid": null,
+  "request": {
+    "url": "http://127.0.0.1:8000/api/knowledge/trigger_file_embedding/1/1",
+    "query": {},
+    "headers": {},
+    "json": null,
+    "data": null,
+    "has_files": false
+  }
+}

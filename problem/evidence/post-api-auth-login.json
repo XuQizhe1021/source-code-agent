@@ -1,0 +1,30 @@
+{
+  "path": "/api/auth/login",
+  "method": "POST",
+  "auth_required": false,
+  "normal": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"用户名或密码错误\"},\"msg\":\"用户名或密码错误\"}"
+  },
+  "invalid": {
+    "status": 200,
+    "body": "{\"code\":422,\"data\":{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\",\"username\"],\"msg\":\"Field required\",\"input\":{\"bad\":\"value\"}},{\"type\":\"missing\",\"loc\":[\"body\",\"password\"],\"msg\":\"Field required\",\"input\":{\"bad\":\"value\"}}]},\"msg\":[{\"type\":\"missing\",\"loc\":[\"body\",\"username\"],\"msg\":\"Field required\",\"input\":{\"bad\":\"value\"}},{\"type\":\"missing\",\"loc\":[\"body\",\"password\"],\"msg\":\"Field required\",\"input\":{\"bad\":\"value\"}}]}"
+  },
+  "boundary": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"用户名或密码错误\"},\"msg\":\"用户名或密码错误\"}"
+  },
+  "auth_missing": null,
+  "auth_invalid": null,
+  "request": {
+    "url": "http://127.0.0.1:8000/api/auth/login",
+    "query": {},
+    "headers": {},
+    "json": {
+      "username": "test",
+      "password": "test"
+    },
+    "data": null,
+    "has_files": false
+  }
+}

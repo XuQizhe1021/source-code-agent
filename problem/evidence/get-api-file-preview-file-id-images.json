@@ -1,0 +1,31 @@
+{
+  "path": "/api/file-preview/{file_id}/images",
+  "method": "GET",
+  "auth_required": false,
+  "normal": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"认证失败\"},\"msg\":\"认证失败\"}"
+  },
+  "invalid": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"认证失败\"},\"msg\":\"认证失败\"}"
+  },
+  "boundary": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"认证失败\"},\"msg\":\"认证失败\"}"
+  },
+  "auth_missing": null,
+  "auth_invalid": null,
+  "request": {
+    "url": "http://127.0.0.1:8000/api/file-preview/1/images",
+    "query": {
+      "token": "test"
+    },
+    "headers": {
+      "authorization": "test"
+    },
+    "json": null,
+    "data": null,
+    "has_files": false
+  }
+}

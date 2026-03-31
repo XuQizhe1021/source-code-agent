@@ -1,0 +1,27 @@
+{
+  "path": "/api/agents/{agent_id}/share-chat/{share_id}/chat",
+  "method": "POST",
+  "auth_required": false,
+  "normal": {
+    "status": 200,
+    "body": "{\"code\":500,\"data\":{\"detail\":\"聊天处理失败: 'NoneType' object has no attribute 'usage_count'\"},\"msg\":\"聊天处理失败: 'NoneType' object has no attribute 'usage_count'\"}"
+  },
+  "invalid": {
+    "status": 200,
+    "body": "{\"code\":500,\"data\":{\"detail\":\"聊天处理失败: 'NoneType' object has no attribute 'usage_count'\"},\"msg\":\"聊天处理失败: 'NoneType' object has no attribute 'usage_count'\"}"
+  },
+  "boundary": {
+    "status": 200,
+    "body": "{\"code\":500,\"data\":{\"detail\":\"聊天处理失败: 'NoneType' object has no attribute 'usage_count'\"},\"msg\":\"聊天处理失败: 'NoneType' object has no attribute 'usage_count'\"}"
+  },
+  "auth_missing": null,
+  "auth_invalid": null,
+  "request": {
+    "url": "http://127.0.0.1:8000/api/agents/1/share-chat/1/chat",
+    "query": {},
+    "headers": {},
+    "json": {},
+    "data": null,
+    "has_files": false
+  }
+}

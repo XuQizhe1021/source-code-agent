@@ -1,0 +1,33 @@
+{
+  "path": "/api/graphs/{graph_id}/extract",
+  "method": "POST",
+  "auth_required": true,
+  "normal": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"Not authenticated\"},\"msg\":\"Not authenticated\"}"
+  },
+  "invalid": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"Not authenticated\"},\"msg\":\"Not authenticated\"}"
+  },
+  "boundary": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"Not authenticated\"},\"msg\":\"Not authenticated\"}"
+  },
+  "auth_missing": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"Not authenticated\"},\"msg\":\"Not authenticated\"}"
+  },
+  "auth_invalid": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"无效的身份凭证\"},\"msg\":\"无效的身份凭证\"}"
+  },
+  "request": {
+    "url": "http://127.0.0.1:8000/api/graphs/1/extract",
+    "query": {},
+    "headers": {},
+    "json": {},
+    "data": null,
+    "has_files": false
+  }
+}

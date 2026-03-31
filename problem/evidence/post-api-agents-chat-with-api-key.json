@@ -1,0 +1,38 @@
+{
+  "path": "/api/agents/chat-with-api-key",
+  "method": "POST",
+  "auth_required": false,
+  "normal": {
+    "status": 200,
+    "body": "{\"code\":422,\"data\":{\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"messages\",0,\"role\"],\"msg\":\"Input should be a valid string\",\"input\":null},{\"type\":\"string_type\",\"loc\":[\"body\",\"messages\",0,\"content\"],\"msg\":\"Input should be a valid string\",\"input\":null}]},\"msg\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"messages\",0,\"role\"],\"msg\":\"Input should be a valid string\",\"input\":null},{\"type\":\"string_type\",\"loc\":[\"body\",\"messages\",0,\"content\"],\"msg\":\"Input should be a valid string\",\"input\":null}]}"
+  },
+  "invalid": {
+    "status": 200,
+    "body": "{\"code\":422,\"data\":{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\",\"messages\"],\"msg\":\"Field required\",\"input\":{\"bad\":\"value\"}}]},\"msg\":[{\"type\":\"missing\",\"loc\":[\"body\",\"messages\"],\"msg\":\"Field required\",\"input\":{\"bad\":\"value\"}}]}"
+  },
+  "boundary": {
+    "status": 200,
+    "body": "{\"code\":422,\"data\":{\"detail\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"messages\",0,\"role\"],\"msg\":\"Input should be a valid string\",\"input\":null},{\"type\":\"string_type\",\"loc\":[\"body\",\"messages\",0,\"content\"],\"msg\":\"Input should be a valid string\",\"input\":null}]},\"msg\":[{\"type\":\"string_type\",\"loc\":[\"body\",\"messages\",0,\"role\"],\"msg\":\"Input should be a valid string\",\"input\":null},{\"type\":\"string_type\",\"loc\":[\"body\",\"messages\",0,\"content\"],\"msg\":\"Input should be a valid string\",\"input\":null}]}"
+  },
+  "auth_missing": null,
+  "auth_invalid": null,
+  "request": {
+    "url": "http://127.0.0.1:8000/api/agents/chat-with-api-key",
+    "query": {
+      "user_id": "000000"
+    },
+    "headers": {
+      "api-key": "test"
+    },
+    "json": {
+      "messages": [
+        {
+          "role": null,
+          "content": null
+        }
+      ]
+    },
+    "data": null,
+    "has_files": false
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "path": "/api/knowledge/{knowledge_id}",
+  "method": "PUT",
+  "auth_required": true,
+  "normal": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"Not authenticated\"},\"msg\":\"Not authenticated\"}"
+  },
+  "invalid": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"Not authenticated\"},\"msg\":\"Not authenticated\"}"
+  },
+  "boundary": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"Not authenticated\"},\"msg\":\"Not authenticated\"}"
+  },
+  "auth_missing": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"Not authenticated\"},\"msg\":\"Not authenticated\"}"
+  },
+  "auth_invalid": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"无效的身份凭证\"},\"msg\":\"无效的身份凭证\"}"
+  },
+  "request": {
+    "url": "http://127.0.0.1:8000/api/knowledge/1",
+    "query": {},
+    "headers": {},
+    "json": {
+      "name": "test",
+      "description": "test",
+      "vector_type": "test",
+      "embedding_model": "test",
+      "chunking_config": {
+        "method": null,
+        "chunk_size": null,
+        "chunk_overlap": null,
+        "separator": null,
+        "separators": null,
+        "encoding_name": null,
+        "model_name": null,
+        "is_separator_regex": null,
+        "keep_separator": null
+      },
+      "config": {},
+      "status": "test"
+    },
+    "data": null,
+    "has_files": false
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "path": "/api/auth/register",
+  "method": "POST",
+  "auth_required": false,
+  "normal": {
+    "status": 200,
+    "body": "{\"code\":500,\"data\":null,\"msg\":\"服务器内部错误\"}"
+  },
+  "invalid": {
+    "status": 200,
+    "body": "{\"code\":422,\"data\":{\"detail\":[{\"type\":\"missing\",\"loc\":[\"body\",\"username\"],\"msg\":\"Field required\",\"input\":{\"bad\":\"value\"}},{\"type\":\"missing\",\"loc\":[\"body\",\"password\"],\"msg\":\"Field required\",\"input\":{\"bad\":\"value\"}}]},\"msg\":[{\"type\":\"missing\",\"loc\":[\"body\",\"username\"],\"msg\":\"Field required\",\"input\":{\"bad\":\"value\"}},{\"type\":\"missing\",\"loc\":[\"body\",\"password\"],\"msg\":\"Field required\",\"input\":{\"bad\":\"value\"}}]}"
+  },
+  "boundary": {
+    "status": 200,
+    "body": "{\"code\":500,\"data\":null,\"msg\":\"服务器内部错误\"}"
+  },
+  "auth_missing": null,
+  "auth_invalid": null,
+  "request": {
+    "url": "http://127.0.0.1:8000/api/auth/register",
+    "query": {},
+    "headers": {},
+    "json": {
+      "username": "test",
+      "password": "test"
+    },
+    "data": null,
+    "has_files": false
+  }
+}

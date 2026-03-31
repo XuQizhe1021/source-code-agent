@@ -1,0 +1,30 @@
+{
+  "path": "/api/auth/token",
+  "method": "POST",
+  "auth_required": false,
+  "normal": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"用户名或密码错误\"},\"msg\":\"用户名或密码错误\"}"
+  },
+  "invalid": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"用户名或密码错误\"},\"msg\":\"用户名或密码错误\"}"
+  },
+  "boundary": {
+    "status": 200,
+    "body": "{\"code\":401,\"data\":{\"detail\":\"用户名或密码错误\"},\"msg\":\"用户名或密码错误\"}"
+  },
+  "auth_missing": null,
+  "auth_invalid": null,
+  "request": {
+    "url": "http://127.0.0.1:8000/api/auth/token",
+    "query": {},
+    "headers": {},
+    "json": null,
+    "data": {
+      "username": "test",
+      "password": "test"
+    },
+    "has_files": false
+  }
+}

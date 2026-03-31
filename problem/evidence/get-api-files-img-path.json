@@ -1,0 +1,27 @@
+{
+  "path": "/api/files/img/{path}",
+  "method": "GET",
+  "auth_required": false,
+  "normal": {
+    "status": 200,
+    "body": "{\"code\":500,\"data\":{\"detail\":\"图片服务错误，请稍后再试\"},\"msg\":\"图片服务错误，请稍后再试\"}"
+  },
+  "invalid": {
+    "status": 200,
+    "body": "{\"code\":500,\"data\":{\"detail\":\"图片服务错误，请稍后再试\"},\"msg\":\"图片服务错误，请稍后再试\"}"
+  },
+  "boundary": {
+    "status": 200,
+    "body": "{\"code\":500,\"data\":{\"detail\":\"图片服务错误，请稍后再试\"},\"msg\":\"图片服务错误，请稍后再试\"}"
+  },
+  "auth_missing": null,
+  "auth_invalid": null,
+  "request": {
+    "url": "http://127.0.0.1:8000/api/files/img/test",
+    "query": {},
+    "headers": {},
+    "json": null,
+    "data": null,
+    "has_files": false
+  }
+}

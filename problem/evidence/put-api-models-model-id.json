@@ -1,0 +1,45 @@
+{
+  "path": "/api/models/{model_id}",
+  "method": "PUT",
+  "auth_required": false,
+  "normal": {
+    "status": 200,
+    "body": "{\"code\":404,\"data\":{\"detail\":\"模型未找到\"},\"msg\":\"模型未找到\"}"
+  },
+  "invalid": {
+    "status": 200,
+    "body": "{\"code\":404,\"data\":{\"detail\":\"模型未找到\"},\"msg\":\"模型未找到\"}"
+  },
+  "boundary": {
+    "status": 200,
+    "body": "{\"code\":404,\"data\":{\"detail\":\"模型未找到\"},\"msg\":\"模型未找到\"}"
+  },
+  "auth_missing": null,
+  "auth_invalid": null,
+  "request": {
+    "url": "http://127.0.0.1:8000/api/models/1",
+    "query": {},
+    "headers": {},
+    "json": {
+      "name": "test",
+      "provider": "test",
+      "type": "test",
+      "api_key": "test",
+      "base_url": "test",
+      "description": "test",
+      "config": {},
+      "status": "test",
+      "icon": "test",
+      "tool_call_support": true,
+      "function_call_support": true,
+      "vision_support": true,
+      "thinking_support": true,
+      "mcp_support": true,
+      "default_prompt": "test",
+      "max_context_length": 1,
+      "extra_body_params": {}
+    },
+    "data": null,
+    "has_files": false
+  }
+}

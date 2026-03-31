@@ -1,0 +1,27 @@
+{
+  "path": "/api/agents/{agent_id}/share-chat/{share_id}",
+  "method": "GET",
+  "auth_required": false,
+  "normal": {
+    "status": 200,
+    "body": "{\"code\":500,\"data\":null,\"msg\":\"服务器内部错误\"}"
+  },
+  "invalid": {
+    "status": 200,
+    "body": "{\"code\":500,\"data\":null,\"msg\":\"服务器内部错误\"}"
+  },
+  "boundary": {
+    "status": 200,
+    "body": "{\"code\":500,\"data\":null,\"msg\":\"服务器内部错误\"}"
+  },
+  "auth_missing": null,
+  "auth_invalid": null,
+  "request": {
+    "url": "http://127.0.0.1:8000/api/agents/1/share-chat/1",
+    "query": {},
+    "headers": {},
+    "json": null,
+    "data": null,
+    "has_files": false
+  }
+}

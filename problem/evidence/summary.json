@@ -1,0 +1,9 @@
+{
+  "total_operations": 185,
+  "issue_count": 8,
+  "severity": {
+    "High": 7,
+    "Critical": 1
+  },
+  "token_obtained": false
+}
