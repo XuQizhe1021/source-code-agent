@@ -17,3 +17,57 @@
 - 为什么可优化：手动流程容易因重复执行、分支名不一致或远程冲突导致失败。  
 - 如何优化：统一执行“初始化→分支标准化→远程兼容配置→验证输出”的固定顺序，并在每阶段同步维护 `.gitignore`。  
 - 结果：阶段执行可重复、可追踪，且可直接推送到 `origin/main`，减少后续阶段的环境偏差风险。
+
+# 阶段2：项目初探与本地跑通（requirements 模式）
+
+## 执行过程
+1. 阅读 `lab1_basic_and_testing.md` 的任务1要求与 `README.md`，确认本阶段以 `requirements.txt` 为依赖入口，启动命令为 `python run.py`。
+2. 复制环境模板：`Copy-Item .env.example .env`。
+3. 执行 `python -m pip install -r requirements.txt`，首次安装失败，报错聚焦在 `pillow==10.0.0` 与当前 Python 3.13 环境兼容性。
+4. 再次启动服务时发现 `.env` 中 `CORS_ORIGINS` 格式不符合 `pydantic-settings` 对复杂类型的解析要求，将其改为 JSON 数组格式后继续。
+5. 按运行日志补齐缺失依赖（`modelscope`、`pymilvus`），再次启动后服务进入可用状态，`/docs` 返回 200 且页面包含 Swagger UI。
+
+## 依赖补齐记录
+- 基础安装命令：`python -m pip install -r requirements.txt`。
+- 运行时发现缺失并补齐：
+  - `modelscope`（`ModuleNotFoundError: No module named 'modelscope'`）
+  - `pymilvus`（日志提示向量存储模块不可用）
+- 依赖冲突/兼容性记录：
+  - `pillow==10.0.0` 在 Python 3.13 下构建失败，属于版本兼容性问题。
+  - `mineru[core]` 与 `pypdf==3.15.5` 存在依赖约束冲突（`mineru` 需要更高版本 `pypdf`）。
+- 结论：当前服务启动不依赖上述冲突路径，可在后续阶段通过统一版本策略（锁定 Python 与包版本）系统化处理。
+
+## 项目结构梳理（简要）
+- `app/main.py`：FastAPI 应用入口，挂载 API 路由。
+- `app/api/v1/`：接口层，`api.py` 聚合各 endpoint。
+- `app/models/`、`app/schemas/`：数据模型与请求/响应模型。
+- `app/utils/`：核心工具与业务辅助逻辑（包含配置、知识库、图谱、文件处理等）。
+- `run.py`：本地启动脚本，同时拉起 API 服务与 MCP 相关进程。
+
+## 冗余代码分析（5处）
+1. `app/api/v1/endpoints/agents.py`：`chat_with_agent` 与 `chat_with_agent_api` 的核心生成逻辑大段重复，维护成本高，后续修复易出现行为漂移。  
+   风险：双分支代码不一致导致线上行为不可预测。
+2. `app/api/v1/endpoints/agents.py`：`chat_with_agent` 中对 `agent` 的判空存在重复分支（先 404 后 500），语义冲突。  
+   风险：错误码语义混乱，增加排障难度。
+3. `app/api/v1/endpoints/agents.py`：响应流处理中存在 `except Exception: pass` 的吞异常写法。  
+   风险：数据丢失被静默掩盖，问题难以监控与定位。
+4. `app/utils/agent.py`：`get_agent_by_share_token` 对查询结果缺少空值/状态保护即直接自增计数。  
+   风险：无效 token 场景触发 500，且可能绕过状态约束。
+5. `app/utils/agent.py`：导入 `get_graph` 后又定义同名包装函数，命名冲突与重复封装并存。  
+   风险：可读性下降，重构时易误调用或引入依赖问题。
+
+## 阶段优化点
+- 是什么：将“依赖安装→启动→按日志补齐→可访问性验证”沉淀为标准化诊断闭环。
+- 为什么可优化：当前依赖声明存在版本冲突与 Python 版本兼容问题，单次安装并不能保证可运行。
+- 怎么优化：在后续阶段引入“解释器版本约束 + 依赖锁定 + 启动前自检脚本（环境变量/关键依赖/端口）”，并把冲突包拆分为可选依赖组。
+- 结果：本阶段已在 requirements 模式下完成可运行闭环，`/docs` 可访问，且问题清单具备后续整改输入价值。
+
+## 尝试启动成功后，当前项目详细启动流程
+1. 准备环境文件：确保根目录存在 `.env`，`CORS_ORIGINS` 使用 JSON 数组格式。
+2. 安装依赖：先执行 `python -m pip install -r requirements.txt`，若失败按报错补齐缺失包。
+3. 启动服务：`python run.py`。
+4. 启动日志判定：
+   - 出现 `启动API服务 - 监听 0.0.0.0:8000`
+   - 出现 `Uvicorn running on http://0.0.0.0:8000`
+   - 出现 `Application startup complete`
+5. 文档验证：访问 `http://127.0.0.1:8000/docs`，期望 `Status=200` 且页面包含 `Swagger UI`。
