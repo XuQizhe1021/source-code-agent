@@ -3,6 +3,7 @@
 """
 import os
 import json
+import copy
 import logging
 from typing import Dict, Any, Optional
 
@@ -50,7 +51,7 @@ def load_config() -> Dict[str, Any]:
             # 确保配置包含所有必要的键
             for key, value in DEFAULT_CONFIG.items():
                 if key not in config:
-                    config[key] = value
+                    config[key] = copy.deepcopy(value)
                 elif isinstance(value, dict):
                     for sub_key, sub_value in value.items():
                         if sub_key not in config[key]:
@@ -63,7 +64,7 @@ def load_config() -> Dict[str, Any]:
             logger.error(f"加载配置文件失败: {str(e)}")
     
     # 如果配置文件不存在或者读取失败，使用默认配置
-    _config = DEFAULT_CONFIG.copy()
+    _config = copy.deepcopy(DEFAULT_CONFIG)
     
     # 尝试从环境变量读取配置
     if "NEO4J_URI" in os.environ:

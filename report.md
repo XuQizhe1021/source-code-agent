@@ -134,3 +134,29 @@
 - 是什么：建立可重复执行的基础测试安全网，覆盖核心工具函数的主路径与边界路径。
 - 为什么：`app/utils` 被多处业务调用，缺少测试会导致小改动引发隐蔽回归，且不易第一时间发现。
 - 怎么优化：以轻量单测先覆盖稳定纯函数，再逐步扩展到更高耦合模块；同时固定 `poetry run pytest -v` 作为每阶段的回归门槛。
+
+# 阶段5：覆盖率与工程化强化（对齐80分档）
+
+## 覆盖率数据
+- 已引入 `pytest-cov`（dev 依赖），并执行覆盖率命令：
+  - `python -m poetry run pytest -v --cov=app.utils.config --cov=app.utils.response --cov=app.utils.provider_icon_mapper --cov-report=term-missing`
+- 结果：
+  - `app/utils/config.py`：`82%`
+  - `app/utils/provider_icon_mapper.py`：`91%`
+  - `app/utils/response.py`：`100%`
+  - 关键模块总覆盖率：`86%`
+
+## 用例扩展与薄弱区分析
+- 本阶段新增 `tests/utils/test_config_utils.py`，覆盖配置解析、配置更新持久化、默认模板隔离等关键路径。
+- 保留并复用阶段4的 `tests/utils/test_core_utils.py`，覆盖字符串映射、格式转换与统一响应构造。
+- 薄弱区主要在 `config.py` 的异常分支（如读写失败日志路径）与 `provider_icon_mapper.py` 的异常解析分支，后续可通过 mock 文件异常与 URL 解析异常继续提高覆盖率。
+
+## 抓到的 issue（现象 / 根因 / 修复）
+- 现象：新增“默认配置模板不应被运行时环境污染”测试后失败，`DEFAULT_CONFIG` 被 `load_config()` 调用后意外修改。
+- 根因：`load_config()` 使用浅拷贝 `DEFAULT_CONFIG.copy()`，嵌套字典与默认模板共享引用，环境变量写入时污染了默认模板。
+- 修复：将浅拷贝改为深拷贝，并在补默认键时对整段默认配置使用深拷贝，避免引用共享；修复后测试通过。
+
+## 阶段优化点
+- 是什么：把“覆盖率统计 + 问题发现 + 代码修复”串成闭环流程。
+- 为什么：仅有通过/失败无法衡量测试质量，覆盖率与缺口分析能指导测试投入优先级。
+- 怎么优化：持续按关键模块维护覆盖率基线（≥80%），每次新增测试都要求至少覆盖一个边界/异常路径，并把失败修复过程沉淀到报告中。
