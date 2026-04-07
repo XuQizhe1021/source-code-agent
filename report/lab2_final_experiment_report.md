@@ -53,6 +53,16 @@
 | 100分-进阶项A（重塑核心抽象） | 已完成 | `app/providers/base.py`；`app/utils/model.py`；`app/schemas/model.py`；`app/providers/lab2_echo_provider.py` | 契约兼容与回归验证 | `/providers` 列表、`/models/{id}/test` 统一失败语义、`lab2_echo` 对话闭环 | 已达成 |
 | 100分-进阶项B（子系统改造） | 已完成 | `app/domain/session_memory.py`；`app/api/v1/endpoints/agents.py`；`app/providers/lab2_echo_provider.py` | `tests/domain/test_session_memory.py` + 回归测试 | 同session两轮对话出现记忆回灌标记 + 主链路回归正常 | 已达成 |
 
+## 四点五、最终验收矩阵（达成状态 + 证据位置）
+- 60分-新增Provider并可发起请求：已达成；证据位置 `app/providers/lab2_mock_provider.py` 与本报告 5.3、8.2
+- 60分-Provider→Model→Agent→对话：已达成；证据位置 `app/api/v1/endpoints/models.py`、`app/api/v1/endpoints/agents.py` 与本报告 5.3、8.2
+- 60分-SessionContext基本结构：已达成；证据位置 `app/domain/session_context.py` 与本报告 6.2
+- 80分-RI/AF+防御性编程：已达成；证据位置 `app/domain/session_context.py` 与本报告 6.2、6.3
+- 80分-破坏性测试有效拦截：已达成；证据位置 `tests/domain/test_session_context.py` 与本报告 6.3、8.3
+- 80分-SessionContext真实接入：已达成；证据位置 `app/api/v1/endpoints/agents.py` 与本报告 6.2、6.4
+- 100分-挑战项A（重塑核心抽象）：已达成；证据位置 `app/providers/base.py`、`app/utils/model.py`、`app/schemas/model.py`、`app/providers/lab2_echo_provider.py` 与本报告 7.1.1
+- 100分-挑战项B（记忆子系统改造）：已达成；证据位置 `app/domain/session_memory.py`、`app/api/v1/endpoints/agents.py`、`tests/domain/test_session_memory.py` 与本报告 7.1.2
+
 ## 四点一、最小改造点清单（文件级）
 ### 必须改
 - `app/providers/*.py`（新增 Provider）
@@ -243,6 +253,14 @@
 - 为控制改造风险，挑战项A/B均采用增量接入，避免一次性重写主链路
 - 回归策略以“既有 provider 可用 + 双对话链路可用”为硬门槛，确保功能不回退
 
+## 七点四、风险与不足（客观）+ 后续工程优化建议
+- 风险1：测试以领域单测和关键链路脚本为主，尚未形成完整 CI 流水线
+- 风险2：会话记忆策略当前是固定窗口，未按 token budget 动态调度
+- 风险3：运行环境缺少 MinIO 时会出现初始化失败日志，虽不阻塞主功能但影响观感
+- 建议1：增加集成测试套件（provider注册、模型测试、对话SSE、记忆回灌）并接入 CI
+- 建议2：为 `SessionMemoryManager` 新增 token 预算策略与可配置策略工厂
+- 建议3：将 MinIO 初始化失败改为降级告警并在健康检查中单独上报
+
 ## 八、关键命令与证据清单（持续更新）
 ### 8.1 命令清单
 - `python -c "from app.providers.manager import provider_manager; print([p['value'] for p in provider_manager.get_all_providers()])"`
@@ -281,6 +299,13 @@
 - 任务2回归补充：`chat_with_agent` 与 `chat_with_agent_api` 双链路并行验证
 - 挑战项A回归：契约统一语义验证 + 既有Provider可用性回归 + 新增Provider零主流程改动接入验证
 - 挑战项B测试：记忆策略单测 + 同session行为对比 + 主链路回归
+
+## 十、最终回归结果汇总
+- 运行检查：`python run.py` 可启动，Provider 自动加载 8 项（含 `lab2_mock` 与 `lab2_echo`）
+- 编译检查：`python -m py_compile ...` 通过（Provider/ADT/记忆子系统/端点/Schema）
+- 单元测试：`python -m pytest tests/domain/test_session_context.py tests/domain/test_session_memory.py -q` -> `11 passed`
+- 关键流程：`FINAL_MOCK_CHAT_OK True`（主链路稳定）；`FINAL_MEMORY_OK True`（记忆回灌生效）
+- 错误语义：`FINAL_OPENAI_STATUS failed` 且 `FINAL_OPENAI_ERROR_CODE connection_failed`（契约统一生效）
 
 ## 九、结论（持续更新）
 已完成任务1、任务2及挑战项A、挑战项B，评分矩阵对应条目均已给出代码、测试与运行证据。当前实现满足“最小改造但证据完整”的目标，可支撑实验二100分验收。

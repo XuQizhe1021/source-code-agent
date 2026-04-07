@@ -132,6 +132,19 @@ class NewProvider(ModelProvider):
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
+## Lab2 验收资料与复验
+
+- 小白讲解文档：`report/lab2_explainer.md`
+- 正式实验报告：`report/lab2_final_experiment_report.md`
+
+推荐复验命令：
+
+```bash
+python -m py_compile app/providers/base.py app/providers/lab2_mock_provider.py app/providers/lab2_echo_provider.py app/domain/session_context.py app/domain/session_memory.py app/utils/model.py app/api/v1/endpoints/agents.py app/schemas/model.py
+python -m pytest tests/domain/test_session_context.py tests/domain/test_session_memory.py -q
+python run.py
+```
+
 ## 许可
 
 [MIT License](LICENSE)

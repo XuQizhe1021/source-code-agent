@@ -3,6 +3,13 @@
 ## 0. 文档定位
 本文件面向初学者，按“为什么这样改、改了什么、怎么验证、常见坑与排查”的顺序持续记录实验二全过程。唯一评分依据为 `report/lab2_oop_and_adt.md`，所有实现与验证都必须可追溯到评分点。
 
+## 0.1 术语约定（与实验报告一致）
+- Provider：模型提供商实现，统一继承 `ModelProvider`
+- SessionContext：消息上下文 ADT，负责 role/content 约束与防御性访问
+- SessionMemoryManager：会话记忆管理器，负责历史选择、裁剪、转换
+- 挑战项A：重塑 ModelProvider 契约
+- 挑战项B：记忆子系统改造
+
 ## 1. 评分依据与达成策略
 ### 1.1 唯一依据
 - `report/lab2_oop_and_adt.md`
@@ -282,3 +289,21 @@
 ### 6.3 关键测试
 - `tests/domain/test_session_context.py`
 - `tests/domain/test_session_memory.py`
+
+## 7. 从0复现实验全过程（新手一条龙）
+### 7.1 环境准备
+- 进入项目根目录，确保依赖已安装
+
+### 7.2 一键回归命令
+- `python -m py_compile app/providers/base.py app/providers/lab2_mock_provider.py app/providers/lab2_echo_provider.py app/domain/session_context.py app/domain/session_memory.py app/utils/model.py app/api/v1/endpoints/agents.py app/schemas/model.py`
+- `python -m pytest tests/domain/test_session_context.py tests/domain/test_session_memory.py -q`
+- `python run.py`
+
+### 7.3 关键流程复验（建议顺序）
+- 验证 Provider 列表中含 `lab2_mock` 与 `lab2_echo`
+- 用 `lab2_mock` 完成 Model→Agent→对话回归
+- 用 `lab2_echo` 在同一 `session_id` 连续两轮对话，验证 `MemoryFromPrevUser` 标记
+- 用 `openai` 无效 key 触发失败，验证统一错误语义（`connection_failed`）
+
+### 7.4 验收结论判定
+- 若单测通过、主链路回归成功、记忆回灌生效、错误语义统一，则可判定达到本实验100分目标的工程证据要求
