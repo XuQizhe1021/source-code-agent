@@ -31,8 +31,12 @@
   - Agent 侧调用：`app/api/v1/endpoints/agents.py`（`chat_with_agent` / `chat_with_agent_api`）
   - 消息组装：`agents.py` 中 `chat_request.messages -> final_messages -> execute_model_inference`
 - 本阶段约束：仅确认基线与计划，不改功能逻辑
-### 阶段 3：ADT设计接入与防御性编程（待执行）
-### 阶段 4：破坏性测试与回归验证（待执行）
+### 阶段 3：ADT设计接入与防御性编程（已完成）
+- 新增 `app/domain/session_context.py`，完成 AF/RI 声明与防御性实现
+- 在 `chat_with_agent_api` 真实消息组装路径接入 SessionContext
+### 阶段 4：破坏性测试与回归验证（已完成）
+- 新增 `tests/domain/test_session_context.py` 并通过 `5 passed`
+- 接入后链路回归：`chat-with-api-key` 仍返回 `message_chunk` + `done`
 ### 阶段 5：100分加分项实现与验收（待执行）
 
 ## 四、评分点对齐矩阵（持续更新）
@@ -40,10 +44,10 @@
 |---|---|---|---|---|---|
 | 60分-新增 Provider 并可发起请求 | 已完成 | `app/providers/lab2_mock_provider.py`；`app/providers/base.py`；`app/providers/manager.py` | Provider链路实测脚本（注册/登录/建模/测试） | `GET /api/models/providers`；`GET /api/models/providers/modules`；`POST /api/models/{id}/test` | 已达成 |
 | 60分-Provider→Model→Agent→对话链路 | 已完成 | `app/api/v1/endpoints/models.py`；`app/api/v1/endpoints/agents.py`；`app/utils/model.py` | 链路实测脚本（创建Agent、生成API Key、对话） | `POST /api/agents/chat-with-api-key` SSE 包含 `message_chunk` + `done` | 已达成 |
-| 60分-定义 SessionContext 基本结构 | 规划完成 | `app/domain/session_context.py` | `tests/test_session_context_basic.py` | 初始化与调用日志 | 待实现 |
-| 80分-RI/AF + 防御性编程完整 | 规划完成 | `SessionContext` 内 AF/RI/`_check_rep`/防御式复制 | 非法输入与越权修改破坏性测试 | 异常信息 + 内部状态不污染证明 | 待实现 |
-| 80分-破坏性测试有效拦截 | 规划完成 | `tests/test_session_context_destructive.py` | 非法 role、缺字段、返回值外部 append 污染尝试 | pytest 失败转通过记录 | 待实现 |
-| 80分-SessionContext 接入真实流程 | 规划完成 | `app/api/v1/endpoints/agents.py` 改造段 | 集成测试 | 改造前后 `final_messages` 组装对比日志 | 待实现 |
+| 60分-定义 SessionContext 基本结构 | 已完成 | `app/domain/session_context.py` | `tests/domain/test_session_context.py` | 端点消息组装调用日志 | 已达成 |
+| 80分-RI/AF + 防御性编程完整 | 已完成 | `SessionContext` 内 AF/RI/`_check_rep`/深拷贝保护/role校验 | `test_illegal_role_is_rejected` 等 | 运行时异常可定位 + 内部状态不污染 | 已达成 |
+| 80分-破坏性测试有效拦截 | 已完成 | `tests/domain/test_session_context.py` | 非法 role、非法 content、外部篡改返回值、超上限写入 | `5 passed` | 已达成 |
+| 80分-SessionContext 接入真实流程 | 已完成 | `app/api/v1/endpoints/agents.py`（`chat_with_agent_api` 组装段） | API链路实测 | `chat-with-api-key` SSE 含 `message_chunk` + `done` | 已达成 |
 | 100分-进阶项A（重塑核心抽象） | 规划完成 | `app/providers/base.py` 及 provider 子类同步调整 | 契约兼容测试 | `/providers` 列表与调用验证 | 待选择实现 |
 | 100分-进阶项B（子系统改造） | 规划完成 | 记忆抽象层相关文件 | 组件单测 + 链路测 | 运行日志与复用性证明 | 待选择实现 |
 
@@ -134,9 +138,32 @@
 
 ## 六、任务2：ADT改造与防御性编程（持续更新）
 ### 6.1 现状确认
+- 原链路在 `chat_with_agent_api` 中直接使用裸露 list 组装 `final_messages`
+- 该方式缺少统一入口校验，容易出现非法 role、外部引用污染、状态越界等问题
+
 ### 6.2 设计与实现（AF/RI/_check_rep）
+- 新增 `SessionContext`：`app/domain/session_context.py`
+  - AF：表示一次会话消息上下文
+  - RI：role 仅允许 `system/user/assistant`，content 必须为字符串，消息条数不超过上限，内部消息结构固定
+  - 防御实现：`add_message`/`prepend_message`/`get_messages` + `_check_rep`
+- 接入真实流程：`app/api/v1/endpoints/agents.py`
+  - `chat_with_agent_api` 中消息组装改为 `SessionContext` 管理
+  - 最终通过 `session_context.get_messages()` 传入模型推理
+- 伴随修复：保持 API Key 对话链路异步推理调用正确（先 await 再 async for）
+
 ### 6.3 破坏性测试
+- 新增测试文件：`tests/domain/test_session_context.py`
+- 覆盖场景：
+  - 非法 role 拒绝
+  - 非字符串 content 拒绝
+  - 外部修改 `get_messages` 返回值不影响内部状态
+  - 超过上限后拒绝写入
+- 执行结果：`5 passed`
+
 ### 6.4 结果与结论
+- SessionContext 已不是孤立类，已进入真实消息装配流程
+- ADT 约束在代码中被强制执行，能够在状态变更后及时发现不变量破坏
+- 任务2核心目标已完成，并支撑 80 分档相关条目
 
 ## 七、100分达成说明（持续更新）
 ### 7.1 已完成进阶项
@@ -149,6 +176,8 @@
 - `python run.py`
 - Provider模块观测脚本：请求 `/api/models/providers/modules`，确认 `lab2_mock_provider` 被加载
 - 链路闭环脚本：注册用户 -> 登录 -> 创建Model -> 模型测试 -> 创建Agent -> 生成API Key -> `/api/agents/chat-with-api-key` 对话
+- `python -m py_compile app/domain/session_context.py app/api/v1/endpoints/agents.py`
+- `python -m pytest tests/domain/test_session_context.py -q`
 
 ### 8.2 日志清单
 - `已加载提供商: Lab2 Mock Provider (lab2_mock)`
@@ -156,9 +185,13 @@
 - `MODEL_TEST ... "status":"success","message":"Lab2 Mock Provider 连接成功"...`
 - `CHAT_OK True`
 - `EVIDENCE_SUMMARY {"provider":"lab2_mock","model_id":"c3231c567c1d4de388579389bf57c112","agent_id":"5967875af3b842178fe499aa906f082a","chat_ok":true}`
+- `5 passed in 0.03s`（SessionContext 单测）
+- `GOOD_CHAT_HAS_CHUNK True` 与 `GOOD_CHAT_HAS_DONE True`（接入后链路验证）
 
 ### 8.3 测试清单
 - 任务1链路实测（命令行自动化验证，覆盖 Provider识别 / Model创建 / Agent绑定 / 对话SSE）
+- 任务2单测：SessionContext 防御性与不变量测试（5项）
+- 任务2链路实测：`chat_with_agent_api` 接入后 SSE 回归验证
 
 ## 九、结论（持续更新）
 当前已完成实验二执行准备与报告框架搭建，后续将按阶段闭环持续补齐实现、验证与评分映射证据，直至满足100分目标。

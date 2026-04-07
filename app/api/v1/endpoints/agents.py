@@ -28,6 +28,7 @@ from app.utils.neo4j_utils import get_neo4j_service
 from app.utils.config import get_neo4j_config
 from app.utils import format_datetime  # 添加这行导入
 from app.models.agent import Agent, AgentChatHistory, AgentShareToken
+from app.domain.session_context import SessionContext
 import uuid
 from pydantic import ValidationError
 from datetime import datetime
@@ -356,7 +357,7 @@ async def chat_with_agent(
             used_tokens = 0
             sources = []
             web_search_results = []
-            final_messages = []
+            session_context = SessionContext()
             processed_file_contents = []  # 存储处理后的文件内容
             has_file_content = False  # 标记是否有文件内容
             
@@ -1990,7 +1991,7 @@ async def chat_with_agent_api(
             used_tokens = 0
             sources = []
             web_search_results = []
-            final_messages = []
+            session_context = SessionContext()
             
             # 处理上传的文件
             file_ids = chat_request.file_ids or []
@@ -2112,16 +2113,15 @@ async def chat_with_agent_api(
                 system_prompt += f"\n\n用户上传了以下文件，请基于这些文件内容回答问题：\n\n{file_content_text}"
             
             # 构建消息列表
-            final_messages = [{"role": "system", "content": system_prompt}]
+            session_context.add_message({"role": "system", "content": system_prompt})
             
             # 添加历史消息
             for msg in messages:
-                if msg.role in ["user", "assistant", "system"]:
-                    final_messages.append({"role": msg.role, "content": msg.content})
+                session_context.add_message({"role": msg.role, "content": msg.content})
             
             # 准备模型参数
             model_params = {
-                "messages": final_messages,
+                "messages": session_context.get_messages(),
                 "stream": True
             }
             

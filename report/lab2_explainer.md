@@ -135,6 +135,42 @@
 - 坑4：异步链路把协程当生成器迭代
   - 排查：确认推理调用处先等待再迭代，避免 `'async for' requires __aiter__` 错误
 
+### 阶段 4：AF/RI 是什么、怎么在本项目落地（小白版）
+#### AF 和 RI 是什么
+- AF（抽象函数）：告诉我们“这个类在业务上代表什么”
+  - 本项目中的 `SessionContext` 代表“发送给模型的一次会话消息上下文”
+- RI（表示不变式）：告诉我们“这个类内部什么状态才算合法”
+  - 每条消息必须有 `role` 和 `content`
+  - `role` 只能是 `system/user/assistant`
+  - `content` 必须是字符串
+  - 消息数量不能超过上限
+
+#### 本次怎么落地
+- 新增 ADT 文件：`app/domain/session_context.py`
+- 在类中明确写出 AF/RI，并通过 `_check_rep` 在状态变化后强制校验
+- 内部状态私有化：使用 `_messages`，外部不能直接拿内部引用改值
+- 接入真实流程：`app/api/v1/endpoints/agents.py` 的 `chat_with_agent_api` 消息组装改为使用 `SessionContext`
+
+#### 每个防御策略在防什么错误
+- 非法 role 直接拒绝
+  - 防止脏数据进入模型上下文，避免出现非预期角色语义污染
+- content 强类型检查
+  - 防止把数字/对象当文本传入，导致下游推理或序列化异常
+- get_messages 深拷贝返回
+  - 防止调用方拿到返回列表后 `append/覆盖` 反向污染内部状态
+- 每次 `add/prepend` 后 `_check_rep`
+  - 防止某次状态更新破坏 RI 后继续运行，做到“尽早失败、尽早定位”
+
+#### 真实接入点（最小改造）
+- 接入前：`final_messages` 在端点里由裸露 list 直接 `append`
+- 接入后：改为 `SessionContext.add_message(...)`，最终通过 `get_messages()` 提交给模型
+- 保持改动最小：只改一段真实生效链路，不引入新框架
+
+#### 本阶段验证结果
+- 单元测试：`tests/domain/test_session_context.py`，`5 passed`
+- 链路验证：`chat-with-api-key` 仍可返回 `message_chunk` + `done`
+- 语法验证：`python -m py_compile app/domain/session_context.py app/api/v1/endpoints/agents.py` 通过
+
 ## 3. OOP 任务讲解模板（任务1）
 ### 3.1 为什么改
 ### 3.2 改了什么
