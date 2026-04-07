@@ -79,8 +79,8 @@ class Settings(BaseSettings):
     
     # MinIO配置
     MINIO_ENDPOINT: str = "localhost:9000"
-    MINIO_ACCESS_KEY: str = "xkk"
-    MINIO_SECRET_KEY: str = "xkkxkkxkk"
+    MINIO_ACCESS_KEY: str = "xqz"
+    MINIO_SECRET_KEY: str = "xqzxqzxqz"
     MINIO_SECURE: bool = False
     
     class Config:

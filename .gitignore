@@ -20,6 +20,9 @@ node_modules
 *.njsproj
 *.sln
 *.sw?
+report/
+example_use/
+report/
 
 __pycache__/
 *.py[cod]

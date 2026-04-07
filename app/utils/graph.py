@@ -579,7 +579,7 @@ async def upload_file_to_graph(
         file_type=file_type,
         path=file_path,
         status="uploading",  # 设置初始状态为上传中
-        user_id=user_id  # 添加用户ID
+        created_by=user_id  # 添加用户ID
     )
     
     # 添加到数据库
