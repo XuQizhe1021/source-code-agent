@@ -35,7 +35,7 @@
 - 新增 `app/domain/session_context.py`，完成 AF/RI 声明与防御性实现
 - 在 `chat_with_agent_api` 真实消息组装路径接入 SessionContext
 ### 阶段 4：破坏性测试与回归验证（已完成）
-- 新增 `tests/domain/test_session_context.py` 并通过 `5 passed`
+- 新增 `tests/domain/test_session_context.py` 并通过 `6 passed`
 - 接入后链路回归：`chat-with-api-key` 仍返回 `message_chunk` + `done`
 ### 阶段 5：100分加分项实现与验收（待执行）
 
@@ -46,7 +46,7 @@
 | 60分-Provider→Model→Agent→对话链路 | 已完成 | `app/api/v1/endpoints/models.py`；`app/api/v1/endpoints/agents.py`；`app/utils/model.py` | 链路实测脚本（创建Agent、生成API Key、对话） | `POST /api/agents/chat-with-api-key` SSE 包含 `message_chunk` + `done` | 已达成 |
 | 60分-定义 SessionContext 基本结构 | 已完成 | `app/domain/session_context.py` | `tests/domain/test_session_context.py` | 端点消息组装调用日志 | 已达成 |
 | 80分-RI/AF + 防御性编程完整 | 已完成 | `SessionContext` 内 AF/RI/`_check_rep`/深拷贝保护/role校验 | `test_illegal_role_is_rejected` 等 | 运行时异常可定位 + 内部状态不污染 | 已达成 |
-| 80分-破坏性测试有效拦截 | 已完成 | `tests/domain/test_session_context.py` | 非法 role、非法 content、外部篡改返回值、超上限写入 | `5 passed` | 已达成 |
+| 80分-破坏性测试有效拦截 | 已完成 | `tests/domain/test_session_context.py` | 非法 role、非法 content、外部篡改返回值、超上限写入、内部状态篡改 | `6 passed` | 已达成 |
 | 80分-SessionContext 接入真实流程 | 已完成 | `app/api/v1/endpoints/agents.py`（`chat_with_agent_api` 组装段） | API链路实测 | `chat-with-api-key` SSE 含 `message_chunk` + `done` | 已达成 |
 | 100分-进阶项A（重塑核心抽象） | 规划完成 | `app/providers/base.py` 及 provider 子类同步调整 | 契约兼容测试 | `/providers` 列表与调用验证 | 待选择实现 |
 | 100分-进阶项B（子系统改造） | 规划完成 | 记忆抽象层相关文件 | 组件单测 + 链路测 | 运行日志与复用性证明 | 待选择实现 |
@@ -158,7 +158,26 @@
   - 非字符串 content 拒绝
   - 外部修改 `get_messages` 返回值不影响内部状态
   - 超过上限后拒绝写入
-- 执行结果：`5 passed`
+- 内部状态被篡改后 `_check_rep` 拦截（`内部消息 role 非法`）
+- 执行结果：`6 passed`
+
+### 6.3.1 测试设计
+- 目标：验证 SessionContext 不仅“可用”，且“抗破坏”
+- 方法：
+  - 单元级破坏：直接注入非法 role、非法 content、返回值越权修改、超上限写入、内部状态篡改
+  - 链路级回归：分别验证 `/api/agents/chat-with-api-key` 与 `/api/agents/{agent_id}/chat`
+- 判定标准：
+  - 非法输入必须被异常拦截
+  - 合法输入链路必须继续产生 `message_chunk + done`
+
+### 6.3.2 执行结果
+- 单元测试：`python -m pytest tests/domain/test_session_context.py -q` -> `6 passed`
+- 真实链路：`FLOW_EVIDENCE {"api_key_ok": true, "normal_ok": true, ...}`
+- 说明：防御机制生效的同时，旧对话流程未被破坏
+
+### 6.3.3 结论
+- 评分点“防御性编程 + 破坏性测试 + 真实接入”证据齐全
+- 任务2在工程化层面完成闭环，可支撑 80 分档目标
 
 ### 6.4 结果与结论
 - SessionContext 已不是孤立类，已进入真实消息装配流程
@@ -185,13 +204,15 @@
 - `MODEL_TEST ... "status":"success","message":"Lab2 Mock Provider 连接成功"...`
 - `CHAT_OK True`
 - `EVIDENCE_SUMMARY {"provider":"lab2_mock","model_id":"c3231c567c1d4de388579389bf57c112","agent_id":"5967875af3b842178fe499aa906f082a","chat_ok":true}`
-- `5 passed in 0.03s`（SessionContext 单测）
+- `6 passed in 0.02s`（SessionContext 单测）
 - `GOOD_CHAT_HAS_CHUNK True` 与 `GOOD_CHAT_HAS_DONE True`（接入后链路验证）
+- `FLOW_EVIDENCE {"agent_id":"...","model_id":"...","api_key_ok":true,"normal_ok":true}`（新旧流程均可用）
 
 ### 8.3 测试清单
 - 任务1链路实测（命令行自动化验证，覆盖 Provider识别 / Model创建 / Agent绑定 / 对话SSE）
 - 任务2单测：SessionContext 防御性与不变量测试（5项）
 - 任务2链路实测：`chat_with_agent_api` 接入后 SSE 回归验证
+- 任务2回归补充：`chat_with_agent` 与 `chat_with_agent_api` 双链路并行验证
 
 ## 九、结论（持续更新）
 当前已完成实验二执行准备与报告框架搭建，后续将按阶段闭环持续补齐实现、验证与评分映射证据，直至满足100分目标。

@@ -474,7 +474,7 @@ async def chat_with_agent(
                         "content": f"以下是用户上传的文件内容，这是非常重要的上下文信息，请务必仔细阅读并在回答问题时参考这些内容。如果用户询问关于文件内容的问题，请直接基于这些内容回答：\n\n{combined_content}"
                     }
                     # 将文件内容消息放在最前面，确保模型优先考虑
-                    final_messages.insert(0, file_context_message)
+                    session_context.prepend_message(file_context_message)
                     
                     # 标记有文件内容
                     has_file_content = True
@@ -489,7 +489,7 @@ async def chat_with_agent(
             time.sleep(0.1)
             # 如果有系统提示词，添加到消息列表
             if agent.system_prompt:
-                final_messages.append({"role": "system", "content": agent.system_prompt})
+                session_context.add_message({"role": "system", "content": agent.system_prompt})
             
             # 处理网络搜索 - 如果启用了网络搜索
             if agent.enable_web_search:
@@ -521,7 +521,7 @@ async def chat_with_agent(
                             })
                         
                         # 添加网络搜索上下文
-                        final_messages.append({"role": "system", "content": web_search_context})
+                        session_context.add_message({"role": "system", "content": web_search_context})
                         print("添加了网络搜索结果到上下文")
                         
                         # 发送网络搜索结果状态
@@ -1306,11 +1306,11 @@ async def chat_with_agent(
             
             # 添加历史消息和当前用户消息
             for msg in messages:
-                final_messages.append({"role": msg.role, "content": msg.content})
+                session_context.add_message({"role": msg.role, "content": msg.content})
             
             # 打印完整的消息列表，用于调试
             print("发送给模型的完整消息列表:")
-            for i, msg in enumerate(final_messages):
+            for i, msg in enumerate(session_context.get_messages()):
                 print(f"消息 {i+1} - 角色: {msg['role']}, 内容: {msg['content'][:100]}...")
             
             # 处理MCP服务
@@ -1421,7 +1421,7 @@ async def chat_with_agent(
                                     time.sleep(0.1)
                                     
                                     # 将MCP服务结果添加到消息中
-                                    final_messages.append({
+                                    session_context.add_message({
                                         "role": "system", 
                                         "content": f"以下是调用MCP服务 '{service_name}' 的函数 '{function_name}' 的结果，请使用这些结果回答用户的问题:\n\n```json\n{json.dumps(mcp_result, ensure_ascii=False, indent=2)}\n```"
                                     })
@@ -1487,9 +1487,10 @@ async def chat_with_agent(
             time.sleep(0.1)
             
             # 检查是否有文件内容相关的消息，如果有，添加额外的指导消息
-            has_file_content = any("以下是用户上传的文件内容" in msg.get("content", "") for msg in final_messages if msg.get("role") == "system")
+            current_messages = session_context.get_messages()
+            has_file_content = any("以下是用户上传的文件内容" in msg.get("content", "") for msg in current_messages if msg.get("role") == "system")
             print(f"是否有文件内容: {has_file_content}, 用户消息: {user_message}")
-            print(f"最终消息列表: {[msg.get('role') for msg in final_messages]}")
+            print(f"最终消息列表: {[msg.get('role') for msg in current_messages]}")
             
             # 如果没有检测到文件内容但有文件ID，强制添加一个提示
             if not has_file_content and file_ids:
@@ -1511,7 +1512,7 @@ async def chat_with_agent(
                         "role": "system", 
                         "content": f"以下是用户上传的文件内容，这是非常重要的上下文信息，请务必仔细阅读并在回答问题时参考这些内容。如果用户询问关于文件内容的问题，请直接基于这些内容回答：\n\n{combined_content}"
                     }
-                    final_messages.insert(0, file_context_message)
+                    session_context.prepend_message(file_context_message)
                     has_file_content = True
                     print(f"强制添加文件内容到对话上下文: {combined_content[:100]}...")
             
@@ -1521,7 +1522,7 @@ async def chat_with_agent(
                     "role": "system",
                     "content": "用户正在询问文件内容。请直接回答文件的内容是什么，不要回避或者说找不到相关信息。文件内容已经在之前的系统消息中提供。"
                 }
-                final_messages.append(guidance_message)
+                session_context.add_message(guidance_message)
                 print("添加了额外的指导消息，引导模型回答文件内容相关问题")
             
             # 调用大模型生成回答
@@ -1529,7 +1530,7 @@ async def chat_with_agent(
                 db,
                 model_id,
                 {
-                    "messages": final_messages,
+                    "messages": session_context.get_messages(),
                     "stream": True,
                     **config
                 }

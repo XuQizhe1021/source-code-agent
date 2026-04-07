@@ -171,6 +171,18 @@
 - 链路验证：`chat-with-api-key` 仍可返回 `message_chunk` + `done`
 - 语法验证：`python -m py_compile app/domain/session_context.py app/api/v1/endpoints/agents.py` 通过
 
+#### 为什么要做破坏性测试、如何读懂失败与修复
+- 为什么要做
+  - 正常测试只能证明“能用”，破坏性测试才能证明“不被误用时也安全”
+  - ADT 的价值不在存数据，而在非法输入和越权修改时能主动拦截
+- 怎么读失败
+  - 如果报 `非法 role`，说明入口校验生效，成功挡住脏角色
+  - 如果报 `content 必须是 str`，说明类型约束生效，防止下游异常
+  - 如果报 `消息数量超过上限` 或 `_check_rep` 断言，说明不变量守护生效
+- 怎么判断修复完成
+  - 修复后要同时看三类证据：单测通过、真实链路仍可用、文档证据可追溯
+  - 本次结果：`6 passed`，且 `FLOW_EVIDENCE` 显示 `api_key_ok=true`、`normal_ok=true`，证明“防御增强 + 旧流程不破坏”
+
 ## 3. OOP 任务讲解模板（任务1）
 ### 3.1 为什么改
 ### 3.2 改了什么

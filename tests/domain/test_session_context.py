@@ -43,3 +43,11 @@ def test_content_type_guard():
     context = SessionContext()
     with pytest.raises(TypeError, match="content 必须是 str"):
         context.add_message({"role": "user", "content": 123})
+
+
+def test_internal_state_corruption_is_detected_by_rep_check():
+    context = SessionContext()
+    context.add_message({"role": "user", "content": "ok"})
+    context._messages[0]["role"] = "hacker"
+    with pytest.raises(AssertionError, match="内部消息 role 非法"):
+        context._check_rep()
