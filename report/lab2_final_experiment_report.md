@@ -37,8 +37,9 @@
 ### 阶段 4：破坏性测试与回归验证（已完成）
 - 新增 `tests/domain/test_session_context.py` 并通过 `6 passed`
 - 接入后链路回归：`chat-with-api-key` 仍返回 `message_chunk` + `done`
-### 阶段 5：100分加分项实现与验收（进行中）
+### 阶段 5：100分加分项实现与验收（已完成）
 - 挑战项A已完成：ModelProvider 契约重塑（统一返回语义、错误模型一致化、调用侧解耦）
+- 挑战项B已完成：记忆子系统改造（策略化会话记忆管理 + 真实链路接入）
 
 ## 四、评分点对齐矩阵（持续更新）
 | 评分档位/条目 | 实现状态 | 代码证据 | 测试证据 | 运行/日志证据 | 结论 |
@@ -50,7 +51,7 @@
 | 80分-破坏性测试有效拦截 | 已完成 | `tests/domain/test_session_context.py` | 非法 role、非法 content、外部篡改返回值、超上限写入、内部状态篡改 | `6 passed` | 已达成 |
 | 80分-SessionContext 接入真实流程 | 已完成 | `app/api/v1/endpoints/agents.py`（`chat_with_agent_api` 组装段） | API链路实测 | `chat-with-api-key` SSE 含 `message_chunk` + `done` | 已达成 |
 | 100分-进阶项A（重塑核心抽象） | 已完成 | `app/providers/base.py`；`app/utils/model.py`；`app/schemas/model.py`；`app/providers/lab2_echo_provider.py` | 契约兼容与回归验证 | `/providers` 列表、`/models/{id}/test` 统一失败语义、`lab2_echo` 对话闭环 | 已达成 |
-| 100分-进阶项B（子系统改造） | 规划完成 | 记忆抽象层相关文件 | 组件单测 + 链路测 | 运行日志与复用性证明 | 待选择实现 |
+| 100分-进阶项B（子系统改造） | 已完成 | `app/domain/session_memory.py`；`app/api/v1/endpoints/agents.py`；`app/providers/lab2_echo_provider.py` | `tests/domain/test_session_memory.py` + 回归测试 | 同session两轮对话出现记忆回灌标记 + 主链路回归正常 | 已达成 |
 
 ## 四点一、最小改造点清单（文件级）
 ### 必须改
@@ -188,6 +189,7 @@
 ## 七、100分达成说明（持续更新）
 ### 7.1 已完成进阶项
 - 挑战项A：重塑 ModelProvider 契约（完成）
+- 挑战项B：记忆子系统改造（完成）
 
 ### 7.1.1 挑战项A完成证据与得分论证
 - 设计目标
@@ -205,8 +207,41 @@
   - `ECHO_CHAT_OK True`
 - 得分论证
   - 满足“重塑核心抽象并带来系统性收益”：高内聚、低耦合、可扩展
+
+### 7.1.2 挑战项B实现、验证与风险控制
+- 设计目标
+  - 将“会话记忆选择与裁剪”从端点流程中抽离为可复用抽象，提升连续对话稳定性
+- 实现证据
+  - 新增 `app/domain/session_memory.py`
+    - `MemoryPolicy` 抽象接口
+    - `RecentWindowPolicy` 窗口策略实现
+    - `SessionMemoryManager` 记忆管理器（顺序恢复、长度裁剪、过滤空值）
+  - 在 `app/api/v1/endpoints/agents.py` 的 `chat_with_agent` 与 `chat_with_agent_api` 接入：
+    - 按 `session_id` 读取历史
+    - 通过 `SessionMemoryManager` 注入最近会话记忆
+    - 再拼接本轮消息进入 `SessionContext`
+  - `app/providers/lab2_echo_provider.py` 增加记忆回灌可观测标记，便于前后行为对比验收
+- 验证结果
+  - 行为对比：
+    - 第一轮：`TURN1_TEXT Echo: 第一轮问题`
+    - 第二轮：`TURN2_TEXT Echo: 第二轮问题 | MemoryFromPrevUser: 第一轮问题`
+    - `MEMORY_FEATURE_OK True`
+  - 稳定性回归：
+    - `MOCK_REGRESSION_OK True`（既有主链路可用）
+    - `python -m pytest tests/domain/test_session_context.py tests/domain/test_session_memory.py -q` -> `11 passed`
+- 风险控制
+  - 采用窗口策略限制注入轮数，避免上下文无限膨胀
+  - 对每条记忆做长度裁剪与空值过滤，降低异常输入风险
+  - 通过策略接口隔离演进风险，后续替换策略无需修改端点主流程
 ### 7.2 架构收益
+- Provider 抽象层统一结果语义后，调用侧不再感知各厂商差异，错误处理复杂度下降
+- 会话记忆子系统策略化后，历史回灌与上下文裁剪从端点代码中解耦，便于后续替换策略
+- 新增 Provider 与新增记忆策略都可通过“新增文件 + 接口实现”完成，主流程改动显著减少
+
 ### 7.3 约束与权衡
+- 记忆窗口当前采用固定轮数 + 字符裁剪，优先稳定性与可解释性，后续可升级为 token 预算策略
+- 为控制改造风险，挑战项A/B均采用增量接入，避免一次性重写主链路
+- 回归策略以“既有 provider 可用 + 双对话链路可用”为硬门槛，确保功能不回退
 
 ## 八、关键命令与证据清单（持续更新）
 ### 8.1 命令清单
@@ -218,6 +253,9 @@
 - `python -m pytest tests/domain/test_session_context.py -q`
 - `python -m py_compile app/providers/base.py app/utils/model.py app/providers/lab2_echo_provider.py app/schemas/model.py`
 - 挑战项A回归脚本：校验 providers 列表、新增 echo provider、openai 失败语义统一、echo 对话闭环
+- `python -m py_compile app/domain/session_memory.py app/api/v1/endpoints/agents.py app/providers/lab2_echo_provider.py`
+- `python -m pytest tests/domain/test_session_context.py tests/domain/test_session_memory.py -q`
+- 挑战项B对比脚本：同session两轮请求验证记忆回灌 + lab2_mock主链路回归
 
 ### 8.2 日志清单
 - `已加载提供商: Lab2 Mock Provider (lab2_mock)`
@@ -231,6 +269,10 @@
 - `PROVIDERS_COUNT 8` / `HAS_LAB2_ECHO True` / `HAS_ECHO_MODULE True`
 - `OPENAI_STATUS failed` + `OPENAI_HAS_ERROR_OBJ True` + `OPENAI_ERROR_CODE connection_failed`
 - `ECHO_CHAT_OK True`
+- `TURN2_TEXT Echo: 第二轮问题 | MemoryFromPrevUser: 第一轮问题`
+- `MEMORY_FEATURE_OK True`
+- `MOCK_REGRESSION_OK True`
+- `CHALLENGE_B_EVIDENCE {"echo_agent":"...","echo_model":"...","memory_feature_ok":true,"mock_regression_ok":true}`
 
 ### 8.3 测试清单
 - 任务1链路实测（命令行自动化验证，覆盖 Provider识别 / Model创建 / Agent绑定 / 对话SSE）
@@ -238,6 +280,7 @@
 - 任务2链路实测：`chat_with_agent_api` 接入后 SSE 回归验证
 - 任务2回归补充：`chat_with_agent` 与 `chat_with_agent_api` 双链路并行验证
 - 挑战项A回归：契约统一语义验证 + 既有Provider可用性回归 + 新增Provider零主流程改动接入验证
+- 挑战项B测试：记忆策略单测 + 同session行为对比 + 主链路回归
 
 ## 九、结论（持续更新）
-当前已完成实验二执行准备与报告框架搭建，后续将按阶段闭环持续补齐实现、验证与评分映射证据，直至满足100分目标。
+已完成任务1、任务2及挑战项A、挑战项B，评分矩阵对应条目均已给出代码、测试与运行证据。当前实现满足“最小改造但证据完整”的目标，可支撑实验二100分验收。

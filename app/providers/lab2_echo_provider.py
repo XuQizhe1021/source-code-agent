@@ -54,13 +54,13 @@ class Lab2EchoProvider(ModelProvider):
         stream: bool = False,
         **kwargs
     ) -> Union[Dict[str, Any], AsyncGenerator[Dict[str, Any], None]]:
-        user_text = ""
-        for msg in reversed(messages):
-            if msg.get("role") == "user":
-                user_text = msg.get("content", "")
-                break
+        user_messages = [msg.get("content", "") for msg in messages if msg.get("role") == "user" and isinstance(msg.get("content", ""), str)]
+        user_text = user_messages[-1] if user_messages else ""
+        prev_user_text = user_messages[-2] if len(user_messages) >= 2 else ""
 
         answer = f"Echo: {user_text}" if user_text else "Echo: empty"
+        if prev_user_text:
+            answer += f" | MemoryFromPrevUser: {prev_user_text}"
 
         if stream:
             async def stream_generator():

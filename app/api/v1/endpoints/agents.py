@@ -29,6 +29,7 @@ from app.utils.config import get_neo4j_config
 from app.utils import format_datetime  # 添加这行导入
 from app.models.agent import Agent, AgentChatHistory, AgentShareToken
 from app.domain.session_context import SessionContext
+from app.domain.session_memory import SessionMemoryManager, RecentWindowPolicy
 import uuid
 from pydantic import ValidationError
 from datetime import datetime
@@ -358,6 +359,7 @@ async def chat_with_agent(
             sources = []
             web_search_results = []
             session_context = SessionContext()
+            memory_manager = SessionMemoryManager(policy=RecentWindowPolicy(max_turns=3), max_chars_per_message=400)
             processed_file_contents = []  # 存储处理后的文件内容
             has_file_content = False  # 标记是否有文件内容
             
@@ -1304,6 +1306,16 @@ async def chat_with_agent(
                     yield {"event": "graph_search_error", "data": '{"object": "chat.completion.graph_search_error", "status": "知识图谱查询失败", "error": {str(e)}}'}
                     time.sleep(0.1)
             
+            history_records = agent_utils.get_chat_history(
+                db=db,
+                agent_id=agent_id,
+                session_id=session_id,
+                skip=0,
+                limit=6
+            )
+            for memory_msg in memory_manager.from_history_records(history_records):
+                session_context.add_message(memory_msg)
+
             # 添加历史消息和当前用户消息
             for msg in messages:
                 session_context.add_message({"role": msg.role, "content": msg.content})
@@ -1993,6 +2005,7 @@ async def chat_with_agent_api(
             sources = []
             web_search_results = []
             session_context = SessionContext()
+            memory_manager = SessionMemoryManager(policy=RecentWindowPolicy(max_turns=3), max_chars_per_message=400)
             
             # 处理上传的文件
             file_ids = chat_request.file_ids or []
@@ -2116,6 +2129,16 @@ async def chat_with_agent_api(
             # 构建消息列表
             session_context.add_message({"role": "system", "content": system_prompt})
             
+            history_records = agent_utils.get_chat_history(
+                db=db,
+                agent_id=agent.id,
+                session_id=session_id,
+                skip=0,
+                limit=6
+            )
+            for memory_msg in memory_manager.from_history_records(history_records):
+                session_context.add_message(memory_msg)
+
             # 添加历史消息
             for msg in messages:
                 session_context.add_message({"role": msg.role, "content": msg.content})

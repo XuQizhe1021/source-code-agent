@@ -215,6 +215,41 @@
   - `/api/models/providers/modules` 可见 `lab2_echo_provider`
   - 使用 `lab2_echo` 创建 Model、创建 Agent、对话 SSE 成功（`ECHO_CHAT_OK True`）
 
+### 阶段 6：记忆子系统改造过程与原理（小白版）
+#### 改造前问题
+- 会话历史虽然落库了，但每轮对话默认只用本次 `chat_request.messages`
+- 同一个 `session_id` 的历史上下文不能稳定自动回灌，模型“记忆连续性”弱
+- 历史消息长度不受策略化控制，缺少统一裁剪边界
+
+#### 这次怎么改（OOP + ADT）
+- 新增 `app/domain/session_memory.py`，引入三层抽象：
+  - `MemoryPolicy`：记忆选择策略抽象接口
+  - `RecentWindowPolicy`：最近N轮窗口策略实现
+  - `SessionMemoryManager`：会话记忆管理器，负责历史记录转消息、裁剪、合法性守护
+- 在 `agents.py` 的两个真实链路接入：
+  - `chat_with_agent`
+  - `chat_with_agent_api`
+- 接入方式：先按 `session_id` 从持久化历史取最近记录，经 `SessionMemoryManager` 生成记忆消息，再与本轮消息合并进入 `SessionContext`
+
+#### 为什么这比脚本堆逻辑更稳
+- 策略与流程分离：选择“哪些记忆”由 `MemoryPolicy` 决定，不和端点业务混写
+- 封装边界清晰：长度裁剪、顺序恢复、数据过滤都在 `SessionMemoryManager` 内统一执行
+- 可扩展性好：后续要换成 token-budget 策略，只需新增一个 `MemoryPolicy` 子类
+
+#### 前后行为对比证据
+- 对比场景：同一个 `session_id` 连续两轮请求，第二轮请求体不手动携带上一轮历史
+- 改造后结果：第二轮回复出现 `MemoryFromPrevUser` 标记，证明持久化记忆已自动回灌
+- 证据：
+  - `TURN1_TEXT Echo: 第一轮问题`
+  - `TURN2_TEXT Echo: 第二轮问题 | MemoryFromPrevUser: 第一轮问题`
+  - `MEMORY_FEATURE_OK True`
+
+#### 稳定性与回归
+- 回归检查：`lab2_mock` 主链路仍返回流式 `message_chunk + done`
+- 单元测试：
+  - `tests/domain/test_session_memory.py`（策略窗口、裁剪、过滤、不变量守护）
+  - 与 `tests/domain/test_session_context.py` 一起通过，共 `11 passed`
+
 ## 3. OOP 任务讲解模板（任务1）
 ### 3.1 为什么改
 ### 3.2 改了什么
@@ -235,10 +270,15 @@
 
 ## 6. 命令与证据索引（持续更新）
 ### 6.1 关键命令
-- 待补充
+- `python -m py_compile app/providers/base.py app/utils/model.py app/schemas/model.py app/domain/session_memory.py app/api/v1/endpoints/agents.py app/providers/lab2_echo_provider.py`
+- `python -m pytest tests/domain/test_session_context.py tests/domain/test_session_memory.py -q`
+- 挑战项B对比脚本：同 session 两轮请求，验证记忆回灌标记与主链路回归
 
 ### 6.2 关键日志
-- 待补充
+- `MEMORY_FEATURE_OK True`
+- `MOCK_REGRESSION_OK True`
+- `CHALLENGE_B_EVIDENCE {"memory_feature_ok":true,"mock_regression_ok":true,...}`
 
 ### 6.3 关键测试
-- 待补充
+- `tests/domain/test_session_context.py`
+- `tests/domain/test_session_memory.py`
