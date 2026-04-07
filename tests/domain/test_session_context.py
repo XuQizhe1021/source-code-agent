@@ -51,3 +51,20 @@ def test_internal_state_corruption_is_detected_by_rep_check():
     context._messages[0]["role"] = "hacker"
     with pytest.raises(AssertionError, match="内部消息 role 非法"):
         context._check_rep()
+
+
+def test_message_extra_field_is_rejected():
+    context = SessionContext()
+    with pytest.raises(ValueError, match="仅允许 role/content"):
+        context.add_message({"role": "user", "content": "ok", "name": "x"})
+
+
+def test_add_messages_is_atomic():
+    context = SessionContext()
+    context.add_message({"role": "system", "content": "s"})
+    with pytest.raises(ValueError, match="非法 role"):
+        context.add_messages([
+            {"role": "user", "content": "u1"},
+            {"role": "invalid", "content": "x"},
+        ])
+    assert context.get_messages() == [{"role": "system", "content": "s"}]

@@ -38,8 +38,14 @@ class SessionContext:
         self._check_rep()
 
     def add_messages(self, messages: List[Dict[str, Any]]) -> None:
-        for message in messages:
-            self.add_message(message)
+        if not isinstance(messages, list):
+            raise TypeError("messages 必须是 list")
+        normalized_messages = [self._normalize_message(message) for message in messages]
+        candidate_messages = self._messages + normalized_messages
+        if len(candidate_messages) > self._max_messages:
+            raise ValueError(f"消息数量超过上限: {self._max_messages}")
+        self._messages = candidate_messages
+        self._check_rep()
 
     def get_messages(self) -> List[Dict[str, str]]:
         return copy.deepcopy(self._messages)
@@ -52,6 +58,9 @@ class SessionContext:
             raise ValueError("message 缺少 role")
         if "content" not in message:
             raise ValueError("message 缺少 content")
+        allowed_keys = {"role", "content"}
+        if set(message.keys()) != allowed_keys:
+            raise ValueError("message 仅允许 role/content 两个字段")
 
         role = message["role"]
         content = message["content"]

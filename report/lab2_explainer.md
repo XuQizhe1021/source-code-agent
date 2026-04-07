@@ -307,3 +307,30 @@
 
 ### 7.4 验收结论判定
 - 若单测通过、主链路回归成功、记忆回灌生效、错误语义统一，则可判定达到本实验100分目标的工程证据要求
+
+## 8. 严格审查后的问题-修复-证据
+### 8.1 问题1：批量写入可能破坏事务一致性
+- 问题：`SessionContext.add_messages` 原先逐条写入，遇到非法消息时可能前半段已写入
+- 修复：改为先整体校验，再一次性写入（原子）
+- 证据：`test_add_messages_is_atomic`
+
+### 8.2 问题2：输入字段约束不够严格
+- 问题：消息里出现 `role/content` 之外字段时，可能形成“隐式数据污染”
+- 修复：`SessionContext` 增加字段白名单，只允许 `role/content`
+- 证据：`test_message_extra_field_is_rejected`
+
+### 8.3 问题3：记忆策略多态展示不足
+- 问题：只有窗口策略，难体现“策略可替换”的架构收益
+- 修复：新增 `CharBudgetPolicy`，与 `RecentWindowPolicy` 共同实现 `MemoryPolicy`
+- 证据：`test_char_budget_policy_selects_by_total_chars`
+
+### 8.4 问题4：历史顺序依赖外部查询返回
+- 问题：如果外部顺序波动，记忆选择可能失真
+- 修复：`SessionMemoryManager` 内部按 `created_at` 排序后再选取
+- 证据：`test_recent_window_policy_selects_latest_turns`
+
+### 8.5 审查后总验证
+- 单元测试：`tests/domain/test_session_context.py + tests/domain/test_session_memory.py` -> `14 passed`
+- 主链路回归：`FINAL_AUDIT_MOCK_OK True`
+- 记忆能力回归：`FINAL_AUDIT_MEMORY_OK True`
+- MinIO：`docker compose -f docker-compose.minio.yml up -d` 后健康检查返回 `200`

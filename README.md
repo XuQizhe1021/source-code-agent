@@ -136,6 +136,7 @@ class NewProvider(ModelProvider):
 
 - 小白讲解文档：`report/lab2_explainer.md`
 - 正式实验报告：`report/lab2_final_experiment_report.md`
+- 从零启动教学文档（含MinIO）：`report/从零开始启动（含MinIO）教学文档.md`
 
 推荐复验命令：
 

@@ -243,6 +243,7 @@
   - 采用窗口策略限制注入轮数，避免上下文无限膨胀
   - 对每条记忆做长度裁剪与空值过滤，降低异常输入风险
   - 通过策略接口隔离演进风险，后续替换策略无需修改端点主流程
+  - 严格审查后补强：增加 `CharBudgetPolicy` 多态实现、SessionContext 原子批量写入与字段白名单校验
 ### 7.2 架构收益
 - Provider 抽象层统一结果语义后，调用侧不再感知各厂商差异，错误处理复杂度下降
 - 会话记忆子系统策略化后，历史回灌与上下文裁剪从端点代码中解耦，便于后续替换策略
@@ -261,6 +262,20 @@
 - 建议2：为 `SessionMemoryManager` 新增 token 预算策略与可配置策略工厂
 - 建议3：将 MinIO 初始化失败改为降级告警并在健康检查中单独上报
 
+## 七点五、严格审查问题-修复-证据
+- 问题1：SessionContext 批量写入存在“部分成功”风险
+  - 修复：`add_messages` 改为先整体校验再原子写入
+  - 证据：`tests/domain/test_session_context.py::test_add_messages_is_atomic`
+- 问题2：SessionContext 输入边界偏宽，额外字段未拒绝
+  - 修复：`_normalize_message` 增加字段白名单，仅允许 `role/content`
+  - 证据：`tests/domain/test_session_context.py::test_message_extra_field_is_rejected`
+- 问题3：记忆子系统多态展示不足
+  - 修复：新增 `CharBudgetPolicy`，与 `RecentWindowPolicy` 形成策略多态
+  - 证据：`tests/domain/test_session_memory.py::test_char_budget_policy_selects_by_total_chars`
+- 问题4：记忆顺序依赖外部返回排序
+  - 修复：`SessionMemoryManager` 按 `created_at` 排序后再做策略选择
+  - 证据：`tests/domain/test_session_memory.py::test_recent_window_policy_selects_latest_turns`
+
 ## 八、关键命令与证据清单（持续更新）
 ### 8.1 命令清单
 - `python -c "from app.providers.manager import provider_manager; print([p['value'] for p in provider_manager.get_all_providers()])"`
@@ -274,6 +289,9 @@
 - `python -m py_compile app/domain/session_memory.py app/api/v1/endpoints/agents.py app/providers/lab2_echo_provider.py`
 - `python -m pytest tests/domain/test_session_context.py tests/domain/test_session_memory.py -q`
 - 挑战项B对比脚本：同session两轮请求验证记忆回灌 + lab2_mock主链路回归
+- `docker compose -f docker-compose.minio.yml up -d`
+- `docker compose -f docker-compose.minio.yml ps`
+- `python -c "import requests; print(requests.get('http://127.0.0.1:9000/minio/health/live', timeout=10).status_code)"`
 
 ### 8.2 日志清单
 - `已加载提供商: Lab2 Mock Provider (lab2_mock)`
@@ -303,9 +321,10 @@
 ## 十、最终回归结果汇总
 - 运行检查：`python run.py` 可启动，Provider 自动加载 8 项（含 `lab2_mock` 与 `lab2_echo`）
 - 编译检查：`python -m py_compile ...` 通过（Provider/ADT/记忆子系统/端点/Schema）
-- 单元测试：`python -m pytest tests/domain/test_session_context.py tests/domain/test_session_memory.py -q` -> `11 passed`
+- 单元测试：`python -m pytest tests/domain/test_session_context.py tests/domain/test_session_memory.py -q` -> `14 passed`
 - 关键流程：`FINAL_MOCK_CHAT_OK True`（主链路稳定）；`FINAL_MEMORY_OK True`（记忆回灌生效）
 - 错误语义：`FINAL_OPENAI_STATUS failed` 且 `FINAL_OPENAI_ERROR_CODE connection_failed`（契约统一生效）
+- MinIO检查：`docker compose ... up -d` 成功，`/minio/health/live` 返回 `200`
 
 ## 九、结论（持续更新）
 已完成任务1、任务2及挑战项A、挑战项B，评分矩阵对应条目均已给出代码、测试与运行证据。当前实现满足“最小改造但证据完整”的目标，可支撑实验二100分验收。

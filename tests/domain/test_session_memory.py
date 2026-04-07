@@ -1,21 +1,24 @@
 import pytest
+from datetime import datetime, timedelta
 
-from app.domain.session_memory import RecentWindowPolicy, SessionMemoryManager
+from app.domain.session_memory import RecentWindowPolicy, SessionMemoryManager, CharBudgetPolicy
 
 
 class _Record:
-    def __init__(self, user_message: str, agent_response: str):
+    def __init__(self, user_message: str, agent_response: str, created_at: datetime = None):
         self.user_message = user_message
         self.agent_response = agent_response
+        self.created_at = created_at
 
 
 def test_recent_window_policy_selects_latest_turns():
     policy = RecentWindowPolicy(max_turns=2)
     manager = SessionMemoryManager(policy=policy, max_chars_per_message=100)
+    base = datetime(2026, 1, 1, 12, 0, 0)
     records = [
-        _Record("u3", "a3"),
-        _Record("u2", "a2"),
-        _Record("u1", "a1"),
+        _Record("u3", "a3", base + timedelta(minutes=2)),
+        _Record("u2", "a2", base + timedelta(minutes=1)),
+        _Record("u1", "a1", base + timedelta(minutes=0)),
     ]
     messages = manager.from_history_records(records)
     assert messages == [
@@ -51,3 +54,17 @@ def test_max_turns_guard():
 def test_max_chars_guard():
     with pytest.raises(ValueError, match="max_chars_per_message 必须是正整数"):
         SessionMemoryManager(policy=RecentWindowPolicy(max_turns=1), max_chars_per_message=0)
+
+
+def test_char_budget_policy_selects_by_total_chars():
+    manager = SessionMemoryManager(policy=CharBudgetPolicy(max_chars=6), max_chars_per_message=10)
+    records = [
+        _Record("u1", "a1"),
+        _Record("u2", "a2"),
+        _Record("u333", "a333"),
+    ]
+    messages = manager.from_history_records(records)
+    assert messages == [
+        {"role": "user", "content": "u333"},
+        {"role": "assistant", "content": "a333"},
+    ]
