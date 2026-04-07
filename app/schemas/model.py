@@ -75,6 +75,7 @@ class ModelTestResponse(BaseModel):
     status: str
     message: str
     response: Optional[Dict[str, Any]] = None
+    error: Optional[Dict[str, Any]] = None
 
 
 class ProviderInfo(BaseModel):

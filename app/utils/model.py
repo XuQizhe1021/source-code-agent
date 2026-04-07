@@ -188,8 +188,7 @@ async def test_model_connection(model: Model) -> Dict[str, Any]:
             api_key=model.api_key,
             base_url=model.base_url
         )
-        
-        return result
+        return provider.normalize_test_connection_result(result)
     except Exception as e:
         return {
             "status": "failed",
@@ -267,8 +266,11 @@ async def execute_model_inference(
                 if stream:
                     # 记录返回类型以便调试
                     print(f"流式响应类型: {type(response)}")
+                    if isinstance(response, dict) and provider.is_failed_result(response):
+                        return {"error": provider.extract_error_message(response), "provider_error": response}
                     return response  # 直接返回异步生成器
-                
+                if isinstance(response, dict) and provider.is_failed_result(response):
+                    return {"error": provider.extract_error_message(response), "provider_error": response}
                 return response
             except Exception as e:
                 print(f"执行聊天模型推理时出错: {str(e)},{payload}")
@@ -289,6 +291,8 @@ async def execute_model_inference(
                 model=model.name,
                 text=texts
             )
+            if isinstance(embeddings_result, dict) and provider.is_failed_result(embeddings_result):
+                return {"error": provider.extract_error_message(embeddings_result), "provider_error": embeddings_result}
             
             # 处理返回结果，支持多种格式
             embeddings = []
@@ -344,12 +348,13 @@ async def execute_model_inference(
             response = await provider.text_completion(
                 api_key=model.api_key,
                 base_url=model.base_url,
-                model_name=model.name,
+                model=model.name,
                 prompt=prompt,
                 temperature=temperature,
                 max_tokens=max_tokens
             )
-            
+            if isinstance(response, dict) and provider.is_failed_result(response):
+                return {"error": provider.extract_error_message(response), "provider_error": response}
             return response
             
         else:

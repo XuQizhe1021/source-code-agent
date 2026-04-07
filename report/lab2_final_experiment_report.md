@@ -37,7 +37,8 @@
 ### 阶段 4：破坏性测试与回归验证（已完成）
 - 新增 `tests/domain/test_session_context.py` 并通过 `6 passed`
 - 接入后链路回归：`chat-with-api-key` 仍返回 `message_chunk` + `done`
-### 阶段 5：100分加分项实现与验收（待执行）
+### 阶段 5：100分加分项实现与验收（进行中）
+- 挑战项A已完成：ModelProvider 契约重塑（统一返回语义、错误模型一致化、调用侧解耦）
 
 ## 四、评分点对齐矩阵（持续更新）
 | 评分档位/条目 | 实现状态 | 代码证据 | 测试证据 | 运行/日志证据 | 结论 |
@@ -48,7 +49,7 @@
 | 80分-RI/AF + 防御性编程完整 | 已完成 | `SessionContext` 内 AF/RI/`_check_rep`/深拷贝保护/role校验 | `test_illegal_role_is_rejected` 等 | 运行时异常可定位 + 内部状态不污染 | 已达成 |
 | 80分-破坏性测试有效拦截 | 已完成 | `tests/domain/test_session_context.py` | 非法 role、非法 content、外部篡改返回值、超上限写入、内部状态篡改 | `6 passed` | 已达成 |
 | 80分-SessionContext 接入真实流程 | 已完成 | `app/api/v1/endpoints/agents.py`（`chat_with_agent_api` 组装段） | API链路实测 | `chat-with-api-key` SSE 含 `message_chunk` + `done` | 已达成 |
-| 100分-进阶项A（重塑核心抽象） | 规划完成 | `app/providers/base.py` 及 provider 子类同步调整 | 契约兼容测试 | `/providers` 列表与调用验证 | 待选择实现 |
+| 100分-进阶项A（重塑核心抽象） | 已完成 | `app/providers/base.py`；`app/utils/model.py`；`app/schemas/model.py`；`app/providers/lab2_echo_provider.py` | 契约兼容与回归验证 | `/providers` 列表、`/models/{id}/test` 统一失败语义、`lab2_echo` 对话闭环 | 已达成 |
 | 100分-进阶项B（子系统改造） | 规划完成 | 记忆抽象层相关文件 | 组件单测 + 链路测 | 运行日志与复用性证明 | 待选择实现 |
 
 ## 四点一、最小改造点清单（文件级）
@@ -186,6 +187,24 @@
 
 ## 七、100分达成说明（持续更新）
 ### 7.1 已完成进阶项
+- 挑战项A：重塑 ModelProvider 契约（完成）
+
+### 7.1.1 挑战项A完成证据与得分论证
+- 设计目标
+  - 将 Provider 返回语义收敛到抽象层，避免调用方依赖各 Provider 的私有错误格式
+- 实现证据
+  - `app/providers/base.py` 新增统一契约方法：`build_success_result`、`build_failed_result`、`is_failed_result`、`extract_error_message`、`normalize_test_connection_result`
+  - `app/utils/model.py` 调整为统一消费契约：连接测试统一归一化，推理失败统一判定与错误抽取
+  - `app/schemas/model.py` 为 `ModelTestResponse` 增加 `error` 字段，保证失败语义可观测
+  - 新增 `app/providers/lab2_echo_provider.py`，未改主流程路由与控制器，仅通过 providers 目录自动扫描接入
+- 回归与可用性证据
+  - `PROVIDERS_COUNT 8`，且 `HAS_OPENAI True`、`HAS_LAB2_MOCK True`、`HAS_LAB2_ECHO True`
+  - `HAS_ECHO_MODULE True`
+  - `MOCK_TEST_STATUS success`、`ECHO_TEST_STATUS success`
+  - `OPENAI_STATUS failed` 且 `OPENAI_HAS_ERROR_OBJ True`、`OPENAI_ERROR_CODE connection_failed`
+  - `ECHO_CHAT_OK True`
+- 得分论证
+  - 满足“重塑核心抽象并带来系统性收益”：高内聚、低耦合、可扩展
 ### 7.2 架构收益
 ### 7.3 约束与权衡
 
@@ -197,6 +216,8 @@
 - 链路闭环脚本：注册用户 -> 登录 -> 创建Model -> 模型测试 -> 创建Agent -> 生成API Key -> `/api/agents/chat-with-api-key` 对话
 - `python -m py_compile app/domain/session_context.py app/api/v1/endpoints/agents.py`
 - `python -m pytest tests/domain/test_session_context.py -q`
+- `python -m py_compile app/providers/base.py app/utils/model.py app/providers/lab2_echo_provider.py app/schemas/model.py`
+- 挑战项A回归脚本：校验 providers 列表、新增 echo provider、openai 失败语义统一、echo 对话闭环
 
 ### 8.2 日志清单
 - `已加载提供商: Lab2 Mock Provider (lab2_mock)`
@@ -207,12 +228,16 @@
 - `6 passed in 0.02s`（SessionContext 单测）
 - `GOOD_CHAT_HAS_CHUNK True` 与 `GOOD_CHAT_HAS_DONE True`（接入后链路验证）
 - `FLOW_EVIDENCE {"agent_id":"...","model_id":"...","api_key_ok":true,"normal_ok":true}`（新旧流程均可用）
+- `PROVIDERS_COUNT 8` / `HAS_LAB2_ECHO True` / `HAS_ECHO_MODULE True`
+- `OPENAI_STATUS failed` + `OPENAI_HAS_ERROR_OBJ True` + `OPENAI_ERROR_CODE connection_failed`
+- `ECHO_CHAT_OK True`
 
 ### 8.3 测试清单
 - 任务1链路实测（命令行自动化验证，覆盖 Provider识别 / Model创建 / Agent绑定 / 对话SSE）
-- 任务2单测：SessionContext 防御性与不变量测试（5项）
+- 任务2单测：SessionContext 防御性与不变量测试（6项）
 - 任务2链路实测：`chat_with_agent_api` 接入后 SSE 回归验证
 - 任务2回归补充：`chat_with_agent` 与 `chat_with_agent_api` 双链路并行验证
+- 挑战项A回归：契约统一语义验证 + 既有Provider可用性回归 + 新增Provider零主流程改动接入验证
 
 ## 九、结论（持续更新）
 当前已完成实验二执行准备与报告框架搭建，后续将按阶段闭环持续补齐实现、验证与评分映射证据，直至满足100分目标。

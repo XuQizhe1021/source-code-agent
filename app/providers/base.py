@@ -151,6 +151,64 @@ class ModelProvider(ABC):
             Dict包含嵌入结果
         """
         pass
+
+    def build_success_result(self, message: str, response: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return {
+            "status": "success",
+            "message": message,
+            "response": response if response is not None else {}
+        }
+
+    def build_failed_result(self, message: str, code: str = "provider_error", response: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return {
+            "status": "failed",
+            "message": message,
+            "response": response if response is not None else {},
+            "error": {
+                "code": code,
+                "provider": self.provider_id
+            }
+        }
+
+    def is_failed_result(self, result: Any) -> bool:
+        if not isinstance(result, dict):
+            return False
+        status = str(result.get("status", "")).lower()
+        if status in {"failed", "error"}:
+            return True
+        return "error" in result and isinstance(result["error"], dict)
+
+    def extract_error_message(self, result: Any, default_message: str = "调用模型提供商失败") -> str:
+        if not isinstance(result, dict):
+            return default_message
+        if isinstance(result.get("message"), str) and result.get("message"):
+            return result["message"]
+        error_info = result.get("error")
+        if isinstance(error_info, dict):
+            if isinstance(error_info.get("message"), str) and error_info.get("message"):
+                return error_info["message"]
+            if isinstance(error_info.get("code"), str) and error_info.get("code"):
+                return f"{default_message}: {error_info['code']}"
+        if isinstance(result.get("error"), str) and result.get("error"):
+            return result["error"]
+        return default_message
+
+    def normalize_test_connection_result(self, result: Any) -> Dict[str, Any]:
+        if not isinstance(result, dict):
+            return self.build_failed_result("连接测试返回格式非法", code="invalid_result")
+        if self.is_failed_result(result):
+            return self.build_failed_result(
+                self.extract_error_message(result, default_message="连接测试失败"),
+                code="connection_failed",
+                response=result.get("response", {}) if isinstance(result.get("response"), dict) else {}
+            )
+        response = result.get("response", {})
+        if not isinstance(response, dict):
+            response = {}
+        message = result.get("message", "连接成功")
+        if not isinstance(message, str) or not message:
+            message = "连接成功"
+        return self.build_success_result(message=message, response=response)
     
     def to_provider_info(self) -> Dict[str, Any]:
         """

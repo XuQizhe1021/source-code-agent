@@ -167,7 +167,7 @@
 - 保持改动最小：只改一段真实生效链路，不引入新框架
 
 #### 本阶段验证结果
-- 单元测试：`tests/domain/test_session_context.py`，`5 passed`
+- 单元测试：`tests/domain/test_session_context.py`，`6 passed`
 - 链路验证：`chat-with-api-key` 仍可返回 `message_chunk` + `done`
 - 语法验证：`python -m py_compile app/domain/session_context.py app/api/v1/endpoints/agents.py` 通过
 
@@ -182,6 +182,38 @@
 - 怎么判断修复完成
   - 修复后要同时看三类证据：单测通过、真实链路仍可用、文档证据可追溯
   - 本次结果：`6 passed`，且 `FLOW_EVIDENCE` 显示 `api_key_ok=true`、`normal_ok=true`，证明“防御增强 + 旧流程不破坏”
+
+### 阶段 5：契约重塑前后对比（给初学者看的架构收益）
+#### 重塑前的问题
+- Provider 对外返回语义不完全一致：有的用 `success/failed`，有的用 `error`，上层需要猜测
+- 错误信息格式不统一：有时是 `message`，有时是 `error` 字符串，难以稳定做日志与验收
+- 新增 Provider 虽然能接入，但“连接测试结果结构一致性”缺少统一约束
+
+#### 本次重塑做了什么
+- 在 `ModelProvider` 增加统一契约能力：
+  - `build_success_result`
+  - `build_failed_result`
+  - `is_failed_result`
+  - `extract_error_message`
+  - `normalize_test_connection_result`
+- 在 `app/utils/model.py` 统一消费契约：
+  - 连接测试统一走 `normalize_test_connection_result`
+  - 推理流程统一识别失败结果并返回一致错误结构
+- 增加 `app/providers/lab2_echo_provider.py` 作为“契约重塑后的新增 Provider 证据”
+- `ModelTestResponse` 增加 `error` 字段，使失败语义可被接口完整传递
+
+#### 重塑后的收益（为什么更符合架构演进）
+- 高内聚：错误语义和结果规范收敛到 `ModelProvider` 抽象层，而不是散落在每个调用点
+- 低耦合：业务层不再依赖各 Provider 的私有错误格式，只依赖统一契约方法
+- 可扩展：新增 Provider 只需实现基础能力并可复用统一返回构建方法，主流程几乎不用改
+
+#### 证据点：新增Provider几乎零改动主流程
+- 新增文件：`app/providers/lab2_echo_provider.py`
+- 主流程未新增 if-else 分支，仍由 `ProviderManager` 扫描自动加载
+- 验证结果：
+  - `/api/models/providers` 可见 `lab2_echo`
+  - `/api/models/providers/modules` 可见 `lab2_echo_provider`
+  - 使用 `lab2_echo` 创建 Model、创建 Agent、对话 SSE 成功（`ECHO_CHAT_OK True`）
 
 ## 3. OOP 任务讲解模板（任务1）
 ### 3.1 为什么改
