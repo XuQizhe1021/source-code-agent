@@ -89,6 +89,52 @@
 9. `agents.py` 实际调用是否走到 `execute_model_inference`，`final_messages` 是否已含改造内容
 10. 若仍异常，再看中间件统一响应包装是否掩盖了原始 HTTP 状态
 
+### 阶段 3：Provider从0到1接入全过程（小白可复现）
+#### 为什么这样改
+任务1的核心不是“换一个API地址”，而是证明系统具备可插拔扩展能力。我们通过新增一个不依赖外网的 `lab2_mock` Provider，把“扩展一个新厂商”的工作拆成可复验的最小闭环。
+
+#### 改了什么
+- 新增 `app/providers/lab2_mock_provider.py`，实现 `ModelProvider` 的全部抽象方法：`provider_id`、`provider_name`、`description`、`icon`、`default_base_url`、`supported_model_types`、`features`、`test_connection`、`chat_completion`、`text_completion`、`embedding`
+- 保持现有扫描机制不变，不改注册表；依赖 `ProviderManager` 的目录扫描自动发现
+- 为打通 API Key 对话链路，最小修复 `chat_with_agent_api` 中模型推理调用方式，使其正确等待异步推理结果
+
+#### 怎么验证（可直接复现）
+- Provider 可见性验证
+  - 证据：`provider_manager.get_all_providers()` 输出包含 `lab2_mock`
+  - 证据：`GET /api/models/providers/modules` 返回 `lab2_mock_provider` 已加载，且映射到 `lab2_mock`
+- Provider -> Model 验证
+  - 创建 `provider=lab2_mock` 的 chat 模型成功
+  - `POST /api/models/{model_id}/test` 返回 `status=success`
+- Model -> Agent -> 对话验证
+  - 创建绑定该 `model_id` 的 Agent 成功
+  - 生成 Agent API Key 成功
+  - `POST /api/agents/chat-with-api-key` 返回 SSE，包含 `event: message_chunk` 与 `event: done`
+
+#### 关键证据（本次实际结果）
+- Provider 模块识别：
+  - `HAS_LAB2_MODULE True`
+  - `LAB2_MODULE_DETAIL [{"id":"lab2_mock","name":"Lab2 Mock Provider",...}]`
+- 链路闭环：
+  - `MODEL_ID c3231c567c1d4de388579389bf57c112`
+  - `AGENT_ID 5967875af3b842178fe499aa906f082a`
+  - `MODEL_TEST ... "status":"success","message":"Lab2 Mock Provider 连接成功"...`
+  - `CHAT_OK True`（SSE中出现 `message_chunk` 和 `done`）
+
+#### 为什么这体现 OOP 抽象与多态扩展
+- 抽象：上层只依赖 `ModelProvider` 契约，不依赖具体类名
+- 多态：`provider_manager.get_provider(model.provider)` 取到的是抽象父类引用，运行时可替换为 `openai/google/lab2_mock` 任意子类
+- 开闭：新增 `lab2_mock_provider.py` 即可扩展能力，主流程无需新增 `if-else` 分支
+
+#### 常见坑与排查
+- 坑1：只写了 provider 文件但未被识别
+  - 排查：看 `/api/models/providers/modules` 的 `loaded_modules` 是否含目标模块
+- 坑2：模型 provider 字段与 `provider_id` 不一致
+  - 排查：确认创建 Model 时 `provider` 精确等于 `lab2_mock`
+- 坑3：对话链路看似成功但未产出模型内容
+  - 排查：检查 SSE 是否含 `event: message_chunk`，仅 `status` 不算闭环
+- 坑4：异步链路把协程当生成器迭代
+  - 排查：确认推理调用处先等待再迭代，避免 `'async for' requires __aiter__` 错误
+
 ## 3. OOP 任务讲解模板（任务1）
 ### 3.1 为什么改
 ### 3.2 改了什么

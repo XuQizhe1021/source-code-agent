@@ -2140,7 +2140,7 @@ async def chat_with_agent_api(
             time.sleep(0.1)
             
             # 执行模型推理
-            async for chunk in agent_utils.execute_model_inference(db, model_id, model_params):
+            async for chunk in await agent_utils.execute_model_inference(db, model_id, model_params):
                 if isinstance(chunk, dict):
                     # 处理流式响应
                     if "choices" in chunk and len(chunk["choices"]) > 0:

@@ -38,8 +38,8 @@
 ## 四、评分点对齐矩阵（持续更新）
 | 评分档位/条目 | 实现状态 | 代码证据 | 测试证据 | 运行/日志证据 | 结论 |
 |---|---|---|---|---|---|
-| 60分-新增 Provider 并可发起请求 | 规划完成 | `app/providers/<new_provider>.py`；`app/providers/base.py`；`app/providers/manager.py` | `tests/test_provider_*.py` 或等效契约测试 | `POST /api/models/{id}/test`；`GET /api/models/providers` | 待实现 |
-| 60分-Provider→Model→Agent→对话链路 | 规划完成 | `app/api/v1/endpoints/models.py`；`app/api/v1/endpoints/agents.py`；`app/utils/model.py` | 链路回归测试（创建Model、绑定Agent、发起对话） | 对话接口响应、SSE日志、模型返回片段 | 待实现 |
+| 60分-新增 Provider 并可发起请求 | 已完成 | `app/providers/lab2_mock_provider.py`；`app/providers/base.py`；`app/providers/manager.py` | Provider链路实测脚本（注册/登录/建模/测试） | `GET /api/models/providers`；`GET /api/models/providers/modules`；`POST /api/models/{id}/test` | 已达成 |
+| 60分-Provider→Model→Agent→对话链路 | 已完成 | `app/api/v1/endpoints/models.py`；`app/api/v1/endpoints/agents.py`；`app/utils/model.py` | 链路实测脚本（创建Agent、生成API Key、对话） | `POST /api/agents/chat-with-api-key` SSE 包含 `message_chunk` + `done` | 已达成 |
 | 60分-定义 SessionContext 基本结构 | 规划完成 | `app/domain/session_context.py` | `tests/test_session_context_basic.py` | 初始化与调用日志 | 待实现 |
 | 80分-RI/AF + 防御性编程完整 | 规划完成 | `SessionContext` 内 AF/RI/`_check_rep`/防御式复制 | 非法输入与越权修改破坏性测试 | 异常信息 + 内部状态不污染证明 | 待实现 |
 | 80分-破坏性测试有效拦截 | 规划完成 | `tests/test_session_context_destructive.py` | 非法 role、缺字段、返回值外部 append 污染尝试 | pytest 失败转通过记录 | 待实现 |
@@ -102,9 +102,35 @@
 
 ## 五、任务1：OOP扩展与契约遵守（持续更新）
 ### 5.1 现状确认
+- Provider 扩展机制为目录扫描加载，不是硬编码注册表
+- 主链路通过 `provider_manager.get_provider(model.provider)` 在运行时完成多态分发
+- 原始链路中 `chat_with_agent_api` 存在异步推理调用方式不一致，导致对话验证无法闭环
+
 ### 5.2 设计与实现
+- 新增 Provider：`app/providers/lab2_mock_provider.py`
+  - 实现 `ModelProvider` 所有抽象契约
+  - 支持 `chat/completion/embedding` 三类调用
+  - `test_connection` 返回标准成功结构
+  - `chat_completion(stream=True)` 返回可迭代 SSE chunk 结构
+- 最小修复对话链路：`app/api/v1/endpoints/agents.py`
+  - 将 API Key 对话端点中的模型推理调用调整为正确异步等待后再流式迭代
+
 ### 5.3 验证过程
+- Provider识别验证
+  - 结果：`HAS_LAB2_MODULE True`
+  - 结果：`LAB2_MODULE_DETAIL` 含 `id=lab2_mock`
+- Provider->Model验证
+  - 新建模型成功：`MODEL_ID c3231c567c1d4de388579389bf57c112`
+  - 连接测试成功：`"status":"success","message":"Lab2 Mock Provider 连接成功"`
+- Model->Agent->对话验证
+  - 新建Agent成功：`AGENT_ID 5967875af3b842178fe499aa906f082a`
+  - API Key 生成成功
+  - 对话SSE成功：`CHAT_OK True`，输出包含 `event: message_chunk` 与 `event: done`
+
 ### 5.4 结果与结论
+- 任务1已完成 60 分档两项核心要求：新增 Provider 可用 + Provider→Model→Agent→对话闭环
+- 本实现未修改现有 Provider 行为，新增能力以插件方式并入，符合最小改造策略
+- OOP 价值体现：上层调用仅依赖抽象契约，新增子类即可替换运行时行为，符合多态与开闭原则
 
 ## 六、任务2：ADT改造与防御性编程（持续更新）
 ### 6.1 现状确认
@@ -119,13 +145,20 @@
 
 ## 八、关键命令与证据清单（持续更新）
 ### 8.1 命令清单
-- 待补充
+- `python -c "from app.providers.manager import provider_manager; print([p['value'] for p in provider_manager.get_all_providers()])"`
+- `python run.py`
+- Provider模块观测脚本：请求 `/api/models/providers/modules`，确认 `lab2_mock_provider` 被加载
+- 链路闭环脚本：注册用户 -> 登录 -> 创建Model -> 模型测试 -> 创建Agent -> 生成API Key -> `/api/agents/chat-with-api-key` 对话
 
 ### 8.2 日志清单
-- 待补充
+- `已加载提供商: Lab2 Mock Provider (lab2_mock)`
+- `HAS_LAB2_MODULE True`
+- `MODEL_TEST ... "status":"success","message":"Lab2 Mock Provider 连接成功"...`
+- `CHAT_OK True`
+- `EVIDENCE_SUMMARY {"provider":"lab2_mock","model_id":"c3231c567c1d4de388579389bf57c112","agent_id":"5967875af3b842178fe499aa906f082a","chat_ok":true}`
 
 ### 8.3 测试清单
-- 待补充
+- 任务1链路实测（命令行自动化验证，覆盖 Provider识别 / Model创建 / Agent绑定 / 对话SSE）
 
 ## 九、结论（持续更新）
 当前已完成实验二执行准备与报告框架搭建，后续将按阶段闭环持续补齐实现、验证与评分映射证据，直至满足100分目标。
