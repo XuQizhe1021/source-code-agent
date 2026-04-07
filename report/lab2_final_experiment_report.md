@@ -53,42 +53,38 @@
 | 100分-进阶项A（重塑核心抽象） | 已完成 | `app/providers/base.py`；`app/utils/model.py`；`app/schemas/model.py`；`app/providers/lab2_echo_provider.py` | 契约兼容与回归验证 | `/providers` 列表、`/models/{id}/test` 统一失败语义、`lab2_echo` 对话闭环 | 已达成 |
 | 100分-进阶项B（子系统改造） | 已完成 | `app/domain/session_memory.py`；`app/api/v1/endpoints/agents.py`；`app/providers/lab2_echo_provider.py` | `tests/domain/test_session_memory.py` + 回归测试 | 同session两轮对话出现记忆回灌标记 + 主链路回归正常 | 已达成 |
 
-## 四点五、最终验收矩阵（达成状态 + 证据位置）
-- 60分-新增Provider并可发起请求：已达成；证据位置 `app/providers/lab2_mock_provider.py` 与本报告 5.3、8.2
-- 60分-Provider→Model→Agent→对话：已达成；证据位置 `app/api/v1/endpoints/models.py`、`app/api/v1/endpoints/agents.py` 与本报告 5.3、8.2
-- 60分-SessionContext基本结构：已达成；证据位置 `app/domain/session_context.py` 与本报告 6.2
-- 80分-RI/AF+防御性编程：已达成；证据位置 `app/domain/session_context.py` 与本报告 6.2、6.3
-- 80分-破坏性测试有效拦截：已达成；证据位置 `tests/domain/test_session_context.py` 与本报告 6.3、8.3
-- 80分-SessionContext真实接入：已达成；证据位置 `app/api/v1/endpoints/agents.py` 与本报告 6.2、6.4
-- 100分-挑战项A（重塑核心抽象）：已达成；证据位置 `app/providers/base.py`、`app/utils/model.py`、`app/schemas/model.py`、`app/providers/lab2_echo_provider.py` 与本报告 7.1.1
-- 100分-挑战项B（记忆子系统改造）：已达成；证据位置 `app/domain/session_memory.py`、`app/api/v1/endpoints/agents.py`、`tests/domain/test_session_memory.py` 与本报告 7.1.2
+### 4.1 最小改造点清单（文件级）
 
-## 四点一、最小改造点清单（文件级）
-### 必须改
+#### 必须改
+
 - `app/providers/*.py`（新增 Provider）
 - `app/domain/session_context.py`（新增 ADT）
 - `app/api/v1/endpoints/agents.py`（接入一段真实消息装配）
 - `tests/` 下新增 SessionContext 破坏性测试
 - `report/lab2_explainer.md`、`report/lab2_final_experiment_report.md` 持续更新
 
-### 建议改
+#### 建议改
+
 - `app/api/v1/endpoints/models.py`（补充 provider 观测与重载验证说明）
 - `app/utils/model.py`（仅在必要时补充异常语义一致性）
 - `tests/` 下补充 provider 契约最小测试
 
-### 可选挑战改
+#### 可选挑战改
+
 - `app/providers/base.py`（契约重塑）
 - 记忆抽象层组件文件（MemoryManager 等）
 - `app/utils/file_processor.py` 与上下游（不可变 KnowledgeChunk）
 - 向量存储抽象与多态实现文件
 
-## 四点二、破坏性测试范围（硬性执行）
+### 4.2 破坏性测试范围（硬性执行）
+
 - `SessionContext.add_message` 非法 role/缺字段/超容量输入
 - `SessionContext.get_messages` 返回值外部篡改（append、覆盖）不应影响内部状态
 - Provider 失败路径（无效 key/base_url）要返回可解释错误结构
 - 接入链路后，验证 `final_messages` 未被外部对象意外污染
 
-## 四点三、未生效路径排查顺序（硬性执行）
+### 4.3 未生效路径排查顺序（硬性执行）
+
 1. 启动入口是否为 `app.main:app`
 2. `main.py` 是否挂载 `api_router`
 3. `API_V1_STR` 是否为预期前缀 `/api`
@@ -100,23 +96,28 @@
 9. 请求是否进入 `agents.py` 真实对话端点并走到 `execute_model_inference`
 10. 若状态码异常，检查统一响应中间件是否改变了外层 HTTP 语义
 
-## 四点四、执行计划（60→80→100）
-### 60分阶段（最小可运行）
+### 4.4 执行计划（60→80→100）
+
+#### 60分阶段（最小可运行）
+
 - 新增 Provider 并通过 provider 列表与模型连接测试
 - 创建使用该 provider 的 Model，并完成 Agent 对话最小链路
 - 定义 SessionContext 基本结构（先不大规模替换）
 
-### 80分阶段（工程化闭环）
+#### 80分阶段（工程化闭环）
+
 - 完整补齐 AF/RI/`_check_rep` 与防御式编程
 - 在 `agents.py` 真实 `final_messages` 装配段接入 SessionContext
 - 增加破坏性测试并回归通过，证明“拦截非法 + 内部不污染”
 
-### 100分阶段（架构师潜力）
+#### 100分阶段（架构师潜力）
+
 - 在四个进阶项中选择两项落地（优先：重塑 ModelProvider 抽象 + 记忆子系统改造）
 - 每项必须具备：代码实现、测试证明、运行证据、评分矩阵映射
 - 形成“最小改造但证据完整”的最终验收包
 
 ## 五、任务1：OOP扩展与契约遵守（持续更新）
+
 ### 5.1 现状确认
 - Provider 扩展机制为目录扫描加载，不是硬编码注册表
 - 主链路通过 `provider_manager.get_provider(model.provider)` 在运行时完成多态分发
@@ -253,6 +254,17 @@
 - 记忆窗口当前采用固定轮数 + 字符裁剪，优先稳定性与可解释性，后续可升级为 token 预算策略
 - 为控制改造风险，挑战项A/B均采用增量接入，避免一次性重写主链路
 - 回归策略以“既有 provider 可用 + 双对话链路可用”为硬门槛，确保功能不回退
+
+### 4.5 最终验收矩阵（达成状态 + 证据位置）
+
+- 60分-新增Provider并可发起请求：已达成；证据位置 `app/providers/lab2_mock_provider.py` 与本报告 5.3、8.2
+- 60分-Provider→Model→Agent→对话：已达成；证据位置 `app/api/v1/endpoints/models.py`、`app/api/v1/endpoints/agents.py` 与本报告 5.3、8.2
+- 60分-SessionContext基本结构：已达成；证据位置 `app/domain/session_context.py` 与本报告 6.2
+- 80分-RI/AF+防御性编程：已达成；证据位置 `app/domain/session_context.py` 与本报告 6.2、6.3
+- 80分-破坏性测试有效拦截：已达成；证据位置 `tests/domain/test_session_context.py` 与本报告 6.3、8.3
+- 80分-SessionContext真实接入：已达成；证据位置 `app/api/v1/endpoints/agents.py` 与本报告 6.2、6.4
+- 100分-挑战项A（重塑核心抽象）：已达成；证据位置 `app/providers/base.py`、`app/utils/model.py`、`app/schemas/model.py`、`app/providers/lab2_echo_provider.py` 与本报告 7.1.1
+- 100分-挑战项B（记忆子系统改造）：已达成；证据位置 `app/domain/session_memory.py`、`app/api/v1/endpoints/agents.py`、`tests/domain/test_session_memory.py` 与本报告 7.1.2
 
 ## 七点四、风险与不足（客观）+ 后续工程优化建议
 - 风险1：测试以领域单测和关键链路脚本为主，尚未形成完整 CI 流水线
