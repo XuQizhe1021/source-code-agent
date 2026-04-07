@@ -1,20 +1,19 @@
-# testapi API测试插件
+# testapi API测试工作台
 
-这个插件是一个前端测试面板：  
-勾选接口 -> 点击执行 -> 看结果（可收纳、可删除）。
+这是一个面向测试人员的可视化 API 测试插件。页面会读取 OpenAPI 文档并动态生成接口列表，支持筛选、批量执行、单接口参数编辑、请求响应留痕，适合做联调和回归。
 
-## 功能
+## 核心能力
 
-- 支持勾选需要测试的 API
-- 一键执行所选测试
-- 自动处理登录并复用 token
-- 自动创建图谱并复用 graphId
-- 覆盖 Neo4j 测试与 MinIO 上传测试
-- 结果支持折叠与删除
+- 自动加载并解析 OpenAPI（默认 `/openapi.json`）
+- 按方法、分组、关键字筛选接口
+- 支持勾选可见接口后批量执行
+- 支持单接口参数编辑：Path / Query / Header / Body
+- 支持公共请求头和 Bearer Token
+- 每次请求保留 Request / Response 明细，便于定位问题
 
-## 启动
+## 启动方式
 
-先保证后端启动，再启动静态页面：
+先确保后端服务已启动（例如 `http://127.0.0.1:8000`），再启动静态页面：
 
 ```bash
 python -m http.server 8090 --directory testapi
@@ -24,10 +23,9 @@ python -m http.server 8090 --directory testapi
 
 - http://127.0.0.1:8090/
 
-## 建议勾选顺序
+## 推荐使用流程
 
-1. GET /models/providers  
-2. POST /auth/register + /auth/login  
-3. POST /graphs/  
-4. POST /graphs/{id}/neo4j-test  
-5. POST /graphs/{id}/files/upload
+1. 填写服务地址和 OpenAPI 路径，点击“刷新接口定义”
+2. 在左侧筛选并勾选需要回归的接口，执行批量测试
+3. 对失败项点击选择后，在请求编辑器里微调参数并单独重试
+4. 根据结果区的请求/响应明细进行问题定位

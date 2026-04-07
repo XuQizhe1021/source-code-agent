@@ -56,8 +56,8 @@ ANTHROPIC_API_KEY=your-anthropic-api-key
 
 # MinIO设置
 MINIO_ENDPOINT=localhost:9000
-MINIO_ACCESS_KEY=xkk
-MINIO_SECRET_KEY=xkkxkkxkk
+MINIO_ACCESS_KEY=xqz
+MINIO_SECRET_KEY=xqzxqzxqz
 MINIO_SECURE=false
 ```
 
@@ -131,6 +131,20 @@ class NewProvider(ModelProvider):
 
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
+
+## API测试工作台
+
+项目提供了 `testapi/` 前端测试插件，可直接基于 OpenAPI 动态生成接口测试面板，适合测试人员做批量回归和单接口调试。
+
+启动方式：
+
+```bash
+python -m http.server 8090 --directory testapi
+```
+
+访问地址：
+
+- http://127.0.0.1:8090/
 
 ## Lab2 验收资料与复验
 

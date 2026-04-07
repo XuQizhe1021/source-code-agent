@@ -3,43 +3,93 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CogmAIt API 测试插件</title>
+  <title>CogmAIt API 测试工作台</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
 <body>
-  <main class="container">
-    <h1>CogmAIt API 测试插件</h1>
-    <p class="sub">勾选接口 -> 点击执行 -> 查看可收纳结果（可删除）</p>
+  <main class="app">
+    <header class="topbar">
+      <div>
+        <h1>CogmAIt API 测试工作台</h1>
+        <p class="sub">从 OpenAPI 动态加载接口，支持单接口调试与批量回归</p>
+      </div>
+      <div class="topbar-actions">
+        <button id="reloadSchema" class="primary">刷新接口定义</button>
+      </div>
+    </header>
 
-    <section class="panel">
-      <div class="row">
-        <label>Base URL</label>
-        <input id="baseUrl" value="http://127.0.0.1:8000/api" />
+    <section class="panel grid-2">
+      <div class="field">
+        <label>服务地址</label>
+        <input id="serverUrl" value="http://127.0.0.1:8000" />
       </div>
-      <div class="row">
-        <label>用户名前缀</label>
-        <input id="usernamePrefix" value="testapi_user" />
+      <div class="field">
+        <label>OpenAPI 路径</label>
+        <input id="openapiPath" value="/openapi.json" />
       </div>
-      <div class="row">
-        <label>密码</label>
-        <input id="password" value="TestApiPass123!" />
+      <div class="field">
+        <label>鉴权 Token</label>
+        <input id="token" placeholder="可粘贴 Bearer token（不带 Bearer 前缀也可）" />
+      </div>
+      <div class="field">
+        <label>公共请求头(JSON)</label>
+        <input id="commonHeaders" value='{}' />
       </div>
     </section>
 
-    <section class="panel">
-      <div class="toolbar">
-        <button id="checkAll">全选</button>
-        <button id="uncheckAll">全不选</button>
-        <button id="runSelected" class="primary">执行所选测试</button>
-        <button id="clearResults">清空结果</button>
-      </div>
-      <div id="testList" class="test-list"></div>
+    <section class="layout">
+      <aside class="panel sidebar">
+        <h2>接口列表</h2>
+        <div class="toolbar">
+          <input id="searchKeyword" placeholder="搜索路径/摘要/tag" />
+          <select id="methodFilter">
+            <option value="">全部方法</option>
+          </select>
+          <select id="groupFilter">
+            <option value="">全部分组</option>
+          </select>
+        </div>
+        <div class="toolbar">
+          <button id="checkVisible">勾选可见</button>
+          <button id="uncheckVisible">取消可见</button>
+          <button id="runSelected" class="primary">批量执行勾选</button>
+        </div>
+        <div id="apiList" class="api-list"></div>
+      </aside>
+
+      <section class="panel editor">
+        <h2>请求编辑器</h2>
+        <div id="currentApiMeta" class="meta">请先从左侧选择接口</div>
+        <div class="grid-2">
+          <div class="field">
+            <label>Path 参数(JSON)</label>
+            <textarea id="pathParams" rows="5">{}</textarea>
+          </div>
+          <div class="field">
+            <label>Query 参数(JSON)</label>
+            <textarea id="queryParams" rows="5">{}</textarea>
+          </div>
+          <div class="field">
+            <label>Header 参数(JSON)</label>
+            <textarea id="headerParams" rows="5">{}</textarea>
+          </div>
+          <div class="field">
+            <label>请求体(JSON/FormData)</label>
+            <textarea id="bodyParams" rows="5">{}</textarea>
+          </div>
+        </div>
+        <div class="toolbar">
+          <button id="runCurrent" class="primary">执行当前接口</button>
+          <button id="resetCurrent">重置示例参数</button>
+          <button id="clearResults">清空结果</button>
+        </div>
+      </section>
     </section>
 
     <section class="panel">
-      <h2>测试结果</h2>
+      <h2>执行结果</h2>
       <div id="summary" class="summary">尚未执行</div>
-      <div id="results"></div>
+      <div id="results" class="results"></div>
     </section>
   </main>
   <script type="module" src="./main.js"></script>
