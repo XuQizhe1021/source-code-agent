@@ -183,6 +183,8 @@ python run.py
 ```bash
 python -m poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
+## Neo4j浏览器
+访问：http://127.0.0.1:7474/browser/
 
 ## Neo4j-GraphRAG集成
 
