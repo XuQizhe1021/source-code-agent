@@ -25,11 +25,21 @@ from app.models.user import User
 from app.models.graph import Graph
 from app.schemas.graph import GraphCreate, GraphUpdate
 from app.db.session import SessionLocal as db_session
+from app.application.graph.graph_app_service import (
+    GraphAppService,
+    CreateGraphCommand,
+    ExtractKnowledgeCommand,
+)
 
 # 配置日志
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def get_graph_app_service(db: Session = Depends(get_db)) -> GraphAppService:
+    """提供图谱应用服务依赖，避免在 Endpoint 内部硬编码业务编排。"""
+    return GraphAppService(db=db, logger_obj=logger)
 
 # 创建知识图谱的请求模型
 class GraphCreate(BaseModel):
@@ -127,87 +137,31 @@ async def get_graphs(
 @router.post("/", response_model=GraphResponse)
 async def create_graph(
     graph_data: GraphCreate = Body(...),
-    db: Session = Depends(get_db),
     current_user = Depends(get_current_active_user),
+    graph_app_service: GraphAppService = Depends(get_graph_app_service),
 ):
     """
     创建知识图谱
     """
-    print(f"接收到创建知识图谱请求: {graph_data}")
-    
+    logger.info("接收到创建知识图谱请求: %s", graph_data)
     try:
-        # 创建新的知识图谱对象并添加到数据库
-        new_graph = GraphModel(
+        # Controller 只做参数绑定和调用，真正的业务编排放到应用服务层。
+        command = CreateGraphCommand(
             name=graph_data.name,
-            description=graph_data.description or "",
-            status=graph_data.status,
-            entity_count=0,
-            relation_count=0,
-            model_id=graph_data.model_id,  # 添加模型ID
-            config={},
-            neo4j_status="pending",  # 初始状态为pending，等待创建Neo4j子图
-            dynamic_schema=graph_data.dynamic_schema,  # 设置动态更新schema
-            user_id=current_user.id  # 添加用户ID
+            description=graph_data.description,
+            status=graph_data.status or "active",
+            model_id=graph_data.model_id,
+            dynamic_schema=graph_data.dynamic_schema if graph_data.dynamic_schema is not None else True,
         )
-        
-        # 添加到数据库
-        db.add(new_graph)
-        db.commit()
-        # 刷新以获取自动生成的属性
-        db.refresh(new_graph)
-        
-        graph_id = new_graph.id
-        print(f"成功创建知识图谱: {graph_id}")
-        
-        # 尝试创建Neo4j子图（异步任务，不影响图谱创建）
-        try:
-            # 获取Neo4j配置
-            neo4j_config = get_neo4j_config()
-            
-            # 创建Neo4j服务
-            neo4j_service = get_neo4j_service(
-                uri=neo4j_config["uri"],
-                username=neo4j_config["username"],
-                password=neo4j_config["password"],
-                database=neo4j_config["database"],
-                force_new=True
-            )
-            
-            # 生成子图名称
-            subgraph_name = f"{graph_id}"
-            
-            # 创建子图
-            success = neo4j_service.create_subgraph(subgraph_name)
-            
-            if success:
-                # 更新图谱信息
-                new_graph.neo4j_subgraph = subgraph_name
-                new_graph.neo4j_status = "created"
-                
-                # 创建向量索引
-                neo4j_service.create_vector_index(subgraph_name)
-                
-                # 获取统计信息
-                stats = neo4j_service.get_subgraph_statistics(subgraph_name)
-                new_graph.neo4j_stats = stats
-                
-                # 保存到数据库
-                db.add(new_graph)
-                db.commit()
-                db.refresh(new_graph)
-                
-                print(f"成功创建Neo4j子图: {subgraph_name}")
-            else:
-                print(f"创建Neo4j子图失败")
-        except Exception as e:
-            print(f"创建Neo4j子图时出错: {str(e)}")
-            # 异常不会影响图谱创建，只记录日志
-        
-        # 返回创建的知识图谱
-        return new_graph.to_dict()
+        created_graph = graph_app_service.create_graph(command, current_user.id)
+        return created_graph.to_dict()
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
     except Exception as e:
-        db.rollback()
-        print(f"创建知识图谱时出错: {str(e)}")
+        logger.exception("创建知识图谱时出错: %s", str(e))
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"创建知识图谱失败: {str(e)}"
@@ -1243,95 +1197,19 @@ async def extract_knowledge(
     graph_id: str,
     background_tasks: BackgroundTasks,
     data: dict = Body(...),
-    db: Session = Depends(get_db),
     current_user = Depends(get_current_active_user),
+    graph_app_service: GraphAppService = Depends(get_graph_app_service),
 ):
     """
     从文件内容提取知识图谱，直接使用关联的大模型
     """
-    # 检查知识图谱是否存在
-    graph = db.query(GraphModel).filter(GraphModel.id == graph_id).first()
-    if not graph:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="知识图谱不存在"
-        )
-    
-    # 检查图谱是否关联了模型
-    if not graph.model_id:
-        return {
-            "code": status.HTTP_400_BAD_REQUEST,
-            "message": "知识图谱未关联模型，请先在基本信息中关联一个对话模型"
-        }
-    
-    # 检查参数
-    if "fileId" not in data:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="缺少必要参数: fileId"
-        )
-    
-    file_id = data["fileId"]
-    
-    # 查询文件
-    file = db.query(GraphFile).filter(
-        GraphFile.id == file_id,
-        GraphFile.graph_id == graph_id
-    ).first()
-    
-    if not file:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="文件不存在"
-        )
-    
-    # 检查文件状态：如果是pending状态，先触发解析流程
-    if file.status == "pending" or file.status == "failed":
-        # 更新文件状态为处理中
-        file.status = "processing"
-        db.add(file)
-        db.commit()
-        
-        # 先执行文件解析任务
-        background_tasks.add_task(
-            process_graph_file,
-            file_id,
-            graph_id
-        )
-
-    # 创建一个知识抽取任务
-    task = ExtractionTask(
-        graph_id=graph_id,
-        file_id=file_id,
-        task_type="llm_extraction",
-        status="pending",
-        parameters={"use_llm": True},
-        result=None,
-        model_id=graph.model_id
+    # Controller 仅保留协议转换，业务编排统一下沉到应用服务。
+    command = ExtractKnowledgeCommand(graph_id=graph_id, data=data)
+    return graph_app_service.submit_extract_task(
+        cmd=command,
+        background_tasks=background_tasks,
+        db_session_maker=db_session,
     )
-    
-    db.add(task)
-    db.commit()
-    db.refresh(task)
-    
-    # 添加后台任务：等待文件解析完成后执行知识抽取
-    background_tasks.add_task(
-        extract_knowledge_with_llm_task,  # 直接调用LLM知识抽取任务
-        db_session_maker=db_session, 
-        task_id=task.id,
-        graph_id=graph_id,
-        file_id=file_id
-    )
-    
-    return {
-        "code": status.HTTP_200_OK,
-        "message": "大模型知识抽取任务已提交",
-        "data": {
-            "taskId": task.id,
-            "fileId": file_id,
-            "status": "pending"
-        }
-    }
 
 @router.post("/{graph_id}/extraction-tasks/{task_id}/retry")
 async def retry_extraction_task(

@@ -23,6 +23,7 @@ node_modules
 report/
 example_use/
 report/
+架构教学文档.md
 
 __pycache__/
 *.py[cod]
