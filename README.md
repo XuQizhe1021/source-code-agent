@@ -165,6 +165,10 @@ python run.py
 
 实验三围绕 `app/api/v1/endpoints/agents.py` 的 `POST /{agent_id}/chat` 做了增量重构，核心目标是“主入口编排化、增强逻辑策略化、外部依赖可降级验证”。
 
+### 架构优化建议
+
+- 本轮架构诊断与重构落地方案文档：`架构优化建议.md`
+
 ### 关键改动
 
 - 新增 `app/services/chat_orchestrator.py`：统一聊天主流程编排，供多个入口复用。
