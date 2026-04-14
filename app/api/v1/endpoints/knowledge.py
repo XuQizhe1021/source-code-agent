@@ -40,6 +40,12 @@ from app.utils.deps import get_current_active_user, get_knowledge_admin
 from app.utils.model import get_model, get_models, execute_model_inference
 from app.utils.embedding import EmbeddingManager, HAS_PYMILVUS
 from app.utils.file_processor import extract_text_from_file
+from app.application.knowledge.knowledge_retrieval_service import (
+    KnowledgeRetrievalService,
+    KnowledgeUseCaseError,
+)
+from app.adapters.knowledge.repositories import SqlAlchemyKnowledgeRepository
+from app.adapters.knowledge.gateways import ModelEmbeddingGateway
 
 import uuid
 import shutil
@@ -47,6 +53,16 @@ import asyncio
 from pathlib import Path
 
 router = APIRouter()
+
+
+def get_knowledge_retrieval_service(db: Session = Depends(get_db)) -> KnowledgeRetrievalService:
+    """
+    通过依赖注入组装“端口 + 适配器”。
+    为什么这么做：控制器只声明“我要这个用例服务”，不感知底层 ORM/SDK 细节。
+    """
+    repository = SqlAlchemyKnowledgeRepository(db)
+    gateway = ModelEmbeddingGateway(db)
+    return KnowledgeRetrievalService(repository=repository, embedding_gateway=gateway)
 
 
 @router.get("/chunking-methods")
@@ -529,8 +545,8 @@ async def reprocess_file(
 async def test_knowledge_retrieval(
     knowledge_id: str,
     params: Dict[str, Any],
-    db: Session = Depends(get_db),
     current_user: Any = Depends(get_current_active_user),
+    retrieval_service: KnowledgeRetrievalService = Depends(get_knowledge_retrieval_service),
 ):
     """
     测试知识库检索功能
@@ -543,136 +559,14 @@ async def test_knowledge_retrieval(
             - top_k: 返回结果数量，默认5
     """
     try:
-        # 检查知识库是否存在
-        knowledge = get_knowledge(db=db, knowledge_id=knowledge_id)
-        if not knowledge:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="知识库不存在"
-            )
-        
-        # 获取查询参数
-        query = params.get("query", "")
-        if not query:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="查询文本不能为空"
-            )
-        
-        # 解析前端参数，确保支持不同的参数名格式
-        similarity_threshold = params.get("similarity_threshold", 0.7)
-        # 兼容前端可能使用的不同参数名
-        if "similarityThreshold" in params:
-            similarity_threshold = params.get("similarityThreshold")
-        
-        top_k = params.get("top_k", 5)
-        # 兼容前端可能使用的不同参数名
-        if "topK" in params:
-            top_k = params.get("topK")
-        
-        # 将参数转换为正确的类型
-        try:
-            similarity_threshold = float(similarity_threshold)
-            top_k = int(top_k)
-        except (ValueError, TypeError):
-            # 如果转换失败，使用默认值
-            similarity_threshold = 0.7
-            top_k = 5
-        
-        # 获取知识库的嵌入模型
-        model_id = knowledge.embedding_model
-        if not model_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="知识库未配置嵌入模型"
-            )
-        
-        # 检查是否有足够的文件进行检索
-        file_count_query = db.query(func.count(KnowledgeFile.id)).filter(
-            KnowledgeFile.knowledge_id == knowledge_id,
-            KnowledgeFile.status == "indexed"  # 只考虑已索引的文件
+        return await retrieval_service.retrieve(knowledge_id=knowledge_id, params=params)
+    except KnowledgeUseCaseError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail)
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
         )
-        file_count = file_count_query.scalar() or 0
-        
-        if file_count == 0:
-            return {
-                "query": query,
-                "results": [],
-                "total": 0,
-                "message": "知识库中没有已索引的文件，无法进行检索"
-            }
-        
-        # 获取向量存储
-        vector_store = EmbeddingManager.get_vector_store()
-        if not vector_store or vector_store.client is None:
-            # 如果向量存储不可用，返回友好的错误信息
-            return {
-                "query": query,
-                "results": [],
-                "total": 0,
-                "message": "向量存储服务不可用，请检查 pymilvus 安装和配置"
-            }
-        
-        # 使用模型将查询文本转换为向量
-        query_embedding_result = await execute_model_inference(
-            db,
-            model_id,
-            {
-                "input": [query],
-                "model_type": "embedding"
-            }
-        )
-        
-        if "error" in query_embedding_result:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"生成查询向量失败: {query_embedding_result['error']}"
-            )
-        
-        # 从结果中提取查询向量
-        query_embedding = query_embedding_result.get("embeddings", [])[0]
-        
-        # 在向量数据库中检索相似文档
-        results = vector_store.search_similar(
-            knowledge_id=knowledge_id,
-            query_vector=query_embedding,
-            limit=top_k,
-            filter_expr=None  # 可以添加过滤条件
-        )
-        print(results)
-        # 处理结果，补充文件信息
-        processed_results = []
-        for hit in results:
-            # 获取对应的文件信息
-            file_id = hit.get("file_id", "")
-            file_info = get_knowledge_file(db, file_id)
-            file_name = file_info.original_filename if file_info else "未知文件"
-            
-            # 计算得分，确保分数在0到1之间
-            score = hit.get("score", 0)
-            if score < 0:
-                score = 0
-            elif score > 1:
-                score = 1
-            
-            # 只添加符合相似度阈值的结果
-            if score >= similarity_threshold:
-                processed_results.append({
-                    "content": hit.get("text", ""),
-                    "score": score,
-                    "source_file": file_name,
-                    "file_id": file_id,
-                    "chunk_id": hit.get("chunk_index", 0)
-                })
-        
-        return {
-            "query": query,
-            "results": processed_results,
-            "total": len(processed_results)
-        }
-        
-    except HTTPException as e:
-        raise e
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
