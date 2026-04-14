@@ -161,6 +161,36 @@ python -m pytest tests/domain/test_session_context.py tests/domain/test_session_
 python run.py
 ```
 
+## Lab3 重构说明与复验
+
+实验三围绕 `app/api/v1/endpoints/agents.py` 的 `POST /{agent_id}/chat` 做了增量重构，核心目标是“主入口编排化、增强逻辑策略化、外部依赖可降级验证”。
+
+### 关键改动
+
+- 新增 `app/services/chat_orchestrator.py`：统一聊天主流程编排，供多个入口复用。
+- 新增 `app/services/document_context_service.py`：文件处理职责下沉。
+- 新增 `app/services/strategy_base.py` 与 `app/services/retrieval_strategies.py`：统一 web/知识库/图谱增强策略调度。
+- `chat_with_agent` 与 `chat_with_agent_api` 统一走 `_build_chat_stream_response`，减少重复逻辑。
+
+### 运行方式
+
+```bash
+python -m poetry run python run.py
+```
+
+### 验证方式
+
+```bash
+python -m radon cc app/api/v1/endpoints/agents.py -a -s
+python -m pytest tests/services -q
+python -m pytest -q
+```
+
+### 实验文档
+
+- 过程学习文档：`report/lab3_refactor_learning_notes.md`
+- 最终实验报告：`report/lab3_final_experiment_report.md`
+
 ## 许可
 
 [MIT License](LICENSE)
