@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.session_context import SessionContext
 from app.domain.session_memory import RecentWindowPolicy, SessionMemoryManager
+from app.application.events.subscribers import register_default_subscribers
 from app.models.agent import AgentShareToken
 from app.services.document_context_service import DocumentContextService
 from app.services.retrieval_strategies import (
@@ -32,6 +33,8 @@ class ChatOrchestrator:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.document_service = DocumentContextService()
+        # 注册默认订阅者：让跨域后续动作通过事件衔接，而不是策略里硬编码直连。
+        register_default_subscribers()
 
     async def stream_chat(
         self,
@@ -220,4 +223,3 @@ class ChatOrchestrator:
 
 def _event(event: str, payload: Dict[str, Any]) -> Dict[str, str]:
     return {"event": event, "data": json.dumps(payload, ensure_ascii=False)}
-

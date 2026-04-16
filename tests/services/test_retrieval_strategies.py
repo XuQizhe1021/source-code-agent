@@ -30,18 +30,18 @@ async def test_dispatcher_merges_payloads():
 
 
 @pytest.mark.asyncio
-async def test_knowledge_strategy_degrades_when_vector_store_unavailable(monkeypatch):
-    class _EmbeddingManager:
-        @staticmethod
-        def get_vector_store():
-            return None
+async def test_knowledge_strategy_uses_acl_contract(monkeypatch):
+    async def _fake_retrieve_for_agent(self, *, query, knowledge_bases, config):
+        return []
 
-    monkeypatch.setattr("app.services.retrieval_strategies.EmbeddingManager", _EmbeddingManager)
+    monkeypatch.setattr(
+        "app.application.acl.knowledge_acl.KnowledgeACL.retrieve_for_agent",
+        _fake_retrieve_for_agent,
+    )
     strategy = KnowledgeRetrievalStrategy(db=None, knowledge_bases=[type("KB", (), {"id": "kb1"})()], config={})
     payload = await strategy.execute("query")
-    event_names = [item["event"] for item in payload.events]
-    assert "vector_store_error" in event_names
-    assert "vector_search_complete" in event_names
+    assert payload.sources == []
+    assert payload.events[-1]["event"] == "vector_search_complete"
 
 
 @pytest.mark.asyncio
@@ -61,4 +61,3 @@ async def test_web_strategy_formats_results(monkeypatch):
     assert payload.system_messages == ["formatted web context"]
     assert payload.web_search_results[0]["title"] == "t"
     assert payload.sources[0]["type"] == "web_search"
-

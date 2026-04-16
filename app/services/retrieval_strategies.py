@@ -5,10 +5,8 @@ from typing import Any, Dict, List
 
 from sqlalchemy.orm import Session
 
+from app.application.acl.knowledge_acl import KnowledgeACL
 from app.utils.config import get_neo4j_config
-from app.utils.embedding import EmbeddingManager
-from app.utils.knowledge import get_knowledge, get_knowledge_file
-from app.utils.model import execute_model_inference
 from app.utils.neo4j_utils import get_neo4j_service
 from app.utils.web_search import get_web_search_client, search_web
 
@@ -70,82 +68,35 @@ class KnowledgeRetrievalStrategy(BaseEnhancementStrategy):
     """知识库检索策略。"""
 
     def __init__(self, db: Session, knowledge_bases: List[Any], config: Dict[str, Any]) -> None:
-        self.db = db
         self.knowledge_bases = knowledge_bases
         self.config = config
+        # 通过 ACL 访问 Knowledge 域，避免 Agent 域直接读取对方内部实现。
+        self.knowledge_acl = KnowledgeACL(db)
 
     async def execute(self, query: str) -> EnhancementPayload:
         payload = EnhancementPayload()
         payload.events.append(
             _event("knowledge_search", {"object": "chat.completion.knowledge_search", "status": "正在检索知识库相关内容"})
         )
-
-        similarity_threshold = float(self.config.get("similarity_threshold", 0.7))
-        top_k = int(self.config.get("top_k", 5))
         retrieval_results: List[Dict[str, Any]] = []
-
-        vector_store = EmbeddingManager.get_vector_store()
-        if not vector_store or vector_store.client is None:
-            payload.events.append(
-                _event(
-                    "vector_store_error",
-                    {"object": "chat.completion.vector_store_error", "status": "向量存储服务不可用，已降级跳过"},
-                )
+        snippets = await self.knowledge_acl.retrieve_for_agent(
+            query=query,
+            knowledge_bases=self.knowledge_bases,
+            config=self.config,
+        )
+        for snippet in snippets:
+            retrieval_results.append(
+                {
+                    "content": snippet.content[:512],
+                    "score": snippet.score,
+                    "source_file": snippet.source_file,
+                    "file_id": snippet.file_id,
+                    "knowledge_id": snippet.knowledge_id,
+                    "knowledge_name": snippet.knowledge_name,
+                    "chunk_id": snippet.chunk_id,
+                    "type": "document",
+                }
             )
-            payload.events.append(
-                _event(
-                    "vector_search_complete",
-                    {
-                        "object": "chat.completion.vector_search_complete",
-                        "status": "知识库检索完成，找到0条相关内容",
-                        "results_count": 0,
-                        "ragList": [],
-                    },
-                )
-            )
-            return payload
-
-        for kb in self.knowledge_bases:
-            knowledge = get_knowledge(self.db, kb.id)
-            if not knowledge or not knowledge.embedding_model:
-                continue
-            embedding_result = await execute_model_inference(
-                self.db,
-                knowledge.embedding_model,
-                {"input": [query], "model_type": "embedding"},
-            )
-            if "error" in embedding_result:
-                continue
-            embeddings = embedding_result.get("embeddings", [])
-            if not embeddings:
-                continue
-            query_embedding = embeddings[0]
-            hits = vector_store.search_similar(
-                knowledge_id=kb.id,
-                query_vector=query_embedding,
-                limit=top_k,
-                filter_expr=None,
-            )
-            for hit in hits:
-                score = max(0.0, min(1.0, float(hit.get("score", 0))))
-                if score < similarity_threshold:
-                    continue
-                file_id = hit.get("file_id", "")
-                file_info = get_knowledge_file(self.db, file_id)
-                file_name = file_info.original_filename if file_info else "未知文件"
-                content = hit.get("text", "")[:512]
-                retrieval_results.append(
-                    {
-                        "content": content,
-                        "score": score,
-                        "source_file": file_name,
-                        "file_id": file_id,
-                        "knowledge_id": kb.id,
-                        "knowledge_name": knowledge.name,
-                        "chunk_id": hit.get("chunk_index", 0),
-                        "type": "document",
-                    }
-                )
 
         if retrieval_results:
             context_lines = ["以下是知识库检索到的高相关内容，请优先参考："]
@@ -300,4 +251,3 @@ class EnhancementStrategyDispatcher:
 
 def _event(event: str, payload: Dict[str, Any]) -> Dict[str, str]:
     return {"event": event, "data": json.dumps(payload, ensure_ascii=False)}
-
