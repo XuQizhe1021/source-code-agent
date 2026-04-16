@@ -1,4 +1,5 @@
 import os
+import logging
 from typing import Any, List, Optional, Dict
 from datetime import datetime
 
@@ -53,6 +54,7 @@ import asyncio
 from pathlib import Path
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def get_knowledge_retrieval_service(db: Session = Depends(get_db)) -> KnowledgeRetrievalService:
@@ -545,6 +547,7 @@ async def reprocess_file(
 async def test_knowledge_retrieval(
     knowledge_id: str,
     params: Dict[str, Any],
+    background_tasks: BackgroundTasks,
     current_user: Any = Depends(get_current_active_user),
     retrieval_service: KnowledgeRetrievalService = Depends(get_knowledge_retrieval_service),
 ):
@@ -559,7 +562,17 @@ async def test_knowledge_retrieval(
             - top_k: 返回结果数量，默认5
     """
     try:
-        return await retrieval_service.retrieve(knowledge_id=knowledge_id, params=params)
+        result = await retrieval_service.retrieve(knowledge_id=knowledge_id, params=params)
+        # 统计上报属于非关键路径，放到响应后执行，避免主链路被日志/指标写入拖慢。
+        background_tasks.add_task(
+            report_retrieval_metrics,
+            knowledge_id=knowledge_id,
+            user_id=getattr(current_user, "id", "unknown"),
+            query=params.get("query", ""),
+            result_count=result.get("total", 0),
+            degraded=bool(result.get("message")),
+        )
+        return result
     except KnowledgeUseCaseError as e:
         raise HTTPException(status_code=e.status_code, detail=e.detail)
     except RuntimeError as e:
@@ -572,6 +585,31 @@ async def test_knowledge_retrieval(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"知识库检索失败: {str(e)}"
         )
+
+
+async def report_retrieval_metrics(
+    *,
+    knowledge_id: str,
+    user_id: str,
+    query: str,
+    result_count: int,
+    degraded: bool,
+) -> None:
+    """
+    检索统计异步上报（非关键路径）。
+    为什么这样做：指标采集失败不应影响用户请求成功，因此这里只做 best-effort。
+    """
+    try:
+        logger.info(
+            "knowledge_retrieval_metrics knowledge_id=%s user_id=%s query_len=%s total=%s degraded=%s",
+            knowledge_id,
+            user_id,
+            len(query or ""),
+            result_count,
+            degraded,
+        )
+    except Exception as e:
+        logger.warning("知识检索统计上报失败（已忽略，不影响主流程）: %s", str(e))
 
 
 async def extract_embeddings_from_result(embedding_result: Dict[str, Any]) -> List[List[float]]:
