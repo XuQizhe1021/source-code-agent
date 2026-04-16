@@ -544,7 +544,7 @@ async def reprocess_file(
 
 
 @router.post("/{knowledge_id}/retrieve", response_model=Dict[str, Any])
-async def test_knowledge_retrieval(
+async def retrieve_knowledge(
     knowledge_id: str,
     params: Dict[str, Any],
     background_tasks: BackgroundTasks,

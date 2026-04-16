@@ -1,263 +1,266 @@
-# CogmAIt 后端 API
+# Source Code Agent Backend
 
-这是CogmAIt项目的后端API，使用FastAPI框架开发，提供模型管理、知识管理和智能体管理等功能。本项目采用了可插拔式的模型提供商设计，支持灵活扩展不同的AI模型服务。
+一个基于 FastAPI 的后端系统，聚焦于模型管理、智能体对话、知识库检索、图谱增强与数据源能力编排。
 
-## 特性
+## 目录
+- [项目简介](#项目简介)
+- [核心能力](#核心能力)
+- [技术栈](#技术栈)
+- [项目结构](#项目结构)
+- [快速开始](#快速开始)
+- [配置说明](#配置说明)
+- [运行方式](#运行方式)
+- [测试与质量检查](#测试与质量检查)
+- [API 文档与测试工作台](#api-文档与测试工作台)
+- [扩展指南](#扩展指南)
+- [常见问题](#常见问题)
+- [相关文档](#相关文档)
+- [贡献指南](#贡献指南)
+- [许可证](#许可证)
 
-- **可插拔式模型提供商**：每个新的AI模型提供商只需添加一个Python模块，系统会自动加载并集成
-- **支持多种模型类型**：聊天、文本补全、嵌入向量等
-- **RESTful API**：符合RESTful设计规范的API接口
-- **自动文档生成**：基于FastAPI自动生成的API文档
-- **异步处理**：使用异步编程提高性能
-- **类型安全**：使用Pydantic进行数据验证和类型检查
+## 项目简介
+本项目提供统一的 AI 后端能力层，主要解决以下问题：
+- 统一管理多模型提供商（OpenAI / Anthropic / Ollama / Google / Local / Custom）。
+- 为智能体对话提供统一编排流程，支持联网检索、知识库检索、图谱检索增强。
+- 提供知识库文件处理、向量检索与知识图谱相关接口。
+- 提供数据源连接与 SQL 执行能力，支撑数据问答和结构化检索场景。
 
-## 安装
+## 核心能力
+- 模型管理：模型增删改查、连接测试、Provider 动态扫描与热加载。
+- 智能体管理：智能体配置、会话历史、API Key 与分享 Token 能力。
+- RAG 能力：文件解析、切分、嵌入、检索，以及知识增强注入。
+- 图谱能力：图谱实体/关系管理，Neo4j 相关检索与可视化支撑。
+- 数据源能力：MySQL / PostgreSQL 连接、结构读取、查询执行。
+- 工程能力：异步处理、Pydantic 校验、FastAPI 自动文档。
 
-1. 克隆仓库
+## 技术栈
+- 语言与运行时：Python `3.11 ~ 3.13`
+- Web 框架：FastAPI + Uvicorn
+- ORM：SQLAlchemy
+- 配置管理：Pydantic Settings + `.env`
+- 异步网络：aiohttp / httpx
+- 存储与中间件：MySQL/PostgreSQL、MinIO、Neo4j（可选）
+- 测试：pytest + pytest-asyncio
 
-```bash
-git clone <repository-url>
-cd cogmait-backend
+## 项目结构
+```text
+source_code_agent/
+├── app/
+│   ├── api/v1/endpoints/        # 各业务 API 入口
+│   ├── application/             # 应用层（ACL、事件、图谱/知识服务）
+│   ├── domain/                  # 领域对象（会话上下文、会话记忆策略）
+│   ├── providers/               # 可插拔模型 Provider
+│   ├── services/                # 编排与策略服务
+│   ├── models/                  # SQLAlchemy 模型
+│   ├── schemas/                 # Pydantic 模型
+│   ├── utils/                   # 工具与适配能力
+│   └── main.py                  # FastAPI 应用入口
+├── tests/                       # 自动化测试
+├── testapi/                     # 前端 API 测试工作台
+├── docker-compose.minio.yml     # MinIO 启动配置
+├── run.py                       # 启动脚本（含 MCP 子进程启动）
+├── mcp_services.py              # MCP 服务进程入口
+├── pyproject.toml               # 依赖与项目元信息
+└── README.md
 ```
 
-2. 安装 Poetry
+## 快速开始
 
+### 1. 克隆与进入目录
+```bash
+git clone <your-repo-url>
+cd source_code_agent
+```
+
+### 2. 安装 Poetry
 ```bash
 python -m pip install --user poetry
 ```
 
-3. 安装依赖
-
+### 3. 安装依赖
 ```bash
 python -m poetry install
 ```
 
-## 配置
-
-1. 创建 `.env` 文件（可选）
-
+### 4. 准备环境变量
+```bash
+copy .env.example .env
 ```
-# API设置
-API_V1_STR=/api
-PROJECT_NAME=CogmAIt
-
-# 安全设置
-SECRET_KEY=your-secret-key
-
-# CORS设置
-CORS_ORIGINS=["http://localhost:3000","http://localhost:5173","http://localhost:8080","*"]
-
-# 数据库设置
-DATABASE_URI=sqlite:///./cogmait.db
-
-# 模型API密钥（可选）
-OPENAI_API_KEY=your-openai-api-key
-ANTHROPIC_API_KEY=your-anthropic-api-key
-
-# MinIO设置
-MINIO_ENDPOINT=localhost:9000
-MINIO_ACCESS_KEY=xqz
-MINIO_SECRET_KEY=xqzxqzxqz
-MINIO_SECURE=false
+如果你使用 PowerShell，也可以：
+```powershell
+Copy-Item .env.example .env
 ```
 
-2. 启动 MinIO（推荐）
-
+### 5. 启动可选依赖（推荐 MinIO）
 ```bash
 docker compose -f docker-compose.minio.yml up -d
 ```
 
-## 运行
-
+### 6. 启动服务
 ```bash
 python -m poetry run python run.py
 ```
 
-服务将在 http://localhost:8000 启动，API文档可在 http://localhost:8000/docs 访问。
+启动后默认访问：
+- API 服务：`http://127.0.0.1:8000`
+- Swagger：`http://127.0.0.1:8000/docs`
+- ReDoc：`http://127.0.0.1:8000/redoc`
 
-## 目录结构
+## 配置说明
 
-```
-cogmait-backend/
-├── app/                  # 应用程序目录
-│   ├── api/              # API相关代码
-│   │   └── v1/           # v1版本API
-│   │       ├── api.py    # API路由聚合
-│   │       └── endpoints/# API端点
-│   ├── core/             # 核心配置
-│   ├── db/               # 数据库相关
-│   ├── models/           # 数据库模型
-│   ├── providers/        # 模型提供商实现
-│   │   ├── base.py       # 提供商基类
-│   │   ├── manager.py    # 提供商管理器
-│   │   ├── openai_provider.py # OpenAI实现
-│   │   └── ...           # 其他提供商实现
-│   ├── schemas/          # Pydantic模型
-│   ├── utils/            # 工具函数
-│   └── main.py           # 应用程序入口
-├── requirements.txt      # 依赖项
-├── run.py                # 运行脚本
-└── README.md             # 项目说明
-```
+### `.env` 关键项
+可参考 `.env.example`：
+- `API_V1_STR`：API 前缀，默认 `/api`
+- `PROJECT_NAME`：项目名
+- `SECRET_KEY`：认证密钥（生产环境务必替换）
+- `CORS_ORIGINS`：CORS 白名单
+- `DATABASE_URI`：数据库连接串（可覆盖默认拼接逻辑）
+- `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`：可选模型密钥
+- `MINIO_ENDPOINT` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` / `MINIO_SECURE`
 
-## 添加新的模型提供商
+### `config.json` 关键项
+`run.py` 会读取根目录 `config.json`（或 `CONFIG_FILE` 指定文件）：
+- `host`：监听地址，默认 `0.0.0.0`
+- `port`：监听端口，默认 `8000`
+- `reload`：是否热重载，默认 `true`
 
-要添加新的模型提供商，只需在 `app/providers/` 目录中创建一个新的Python模块，并实现 `ModelProvider` 抽象基类：
+## 运行方式
 
-1. 创建文件，例如 `app/providers/new_provider.py`
-2. 实现 `ModelProvider` 基类的所有抽象方法
-3. 重启应用程序，系统将自动加载新的提供商
-
-示例：
-
-```python
-from app.providers.base import ModelProvider
-
-class NewProvider(ModelProvider):
-    @property
-    def provider_id(self) -> str:
-        return "new_provider"
-    
-    @property
-    def provider_name(self) -> str:
-        return "新提供商"
-    
-    # 实现其他必要方法...
-```
-
-## API文档
-
-启动服务后，可以通过以下URL访问API文档：
-
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-
-## API测试工作台
-
-项目提供了 `testapi/` 前端测试插件，可直接基于 OpenAPI 动态生成接口测试面板，适合测试人员做批量回归和单接口调试。
-
-启动方式：
-
-```bash
-python -m http.server 8090 --directory testapi
-```
-
-访问地址：
-
-- http://127.0.0.1:8090/
-
-## Lab2 验收资料与复验
-
-- 小白讲解文档：`report/lab2_explainer.md`
-- 正式实验报告：`report/lab2_final_experiment_report.md`
-- 从零启动教学文档（含MinIO）：`report/从零开始启动（含MinIO）教学文档.md`
-- 最小可运行案例（脚本+前端）：`example_use/README.md`
-
-推荐复验命令：
-
-```bash
-python -m py_compile app/providers/base.py app/providers/lab2_mock_provider.py app/providers/lab2_echo_provider.py app/domain/session_context.py app/domain/session_memory.py app/utils/model.py app/api/v1/endpoints/agents.py app/schemas/model.py
-python -m pytest tests/domain/test_session_context.py tests/domain/test_session_memory.py -q
-python run.py
-```
-
-## Lab3 重构说明与复验
-
-实验三围绕 `app/api/v1/endpoints/agents.py` 的 `POST /{agent_id}/chat` 做了增量重构，核心目标是“主入口编排化、增强逻辑策略化、外部依赖可降级验证”。
-
-### 架构优化建议
-
-- 本轮架构诊断与重构落地方案文档：`架构优化建议.md`
-
-### 关键改动
-
-- 新增 `app/services/chat_orchestrator.py`：统一聊天主流程编排，供多个入口复用。
-- 新增 `app/services/document_context_service.py`：文件处理职责下沉。
-- 新增 `app/services/strategy_base.py` 与 `app/services/retrieval_strategies.py`：统一 web/知识库/图谱增强策略调度。
-- `chat_with_agent` 与 `chat_with_agent_api` 统一走 `_build_chat_stream_response`，减少重复逻辑。
-
-### 运行方式
-
+### 方式一：推荐（统一入口）
 ```bash
 python -m poetry run python run.py
 ```
+说明：该方式会先尝试拉起 `mcp_services.py` 子进程，再启动 FastAPI。
 
-### 验证方式
-
-```bash
-python -m radon cc app/api/v1/endpoints/agents.py -a -s
-python -m pytest tests/services -q
-python -m pytest -q
-```
-
-### 实验文档
-
-- 过程学习文档：`report/lab3_refactor_learning_notes.md`
-- 最终实验报告：`report/lab3_final_experiment_report.md`
-
-## 许可
-
-[MIT License](LICENSE)
-
-# 知识图谱管理系统 - 后端
-
-## Neo4j配置
-
-1. 安装Neo4j数据库：从 [Neo4j官网](https://neo4j.com/download/) 下载并安装Neo4j Desktop或使用Docker
-
-   ```bash
-   # Docker安装示例
-   docker run \
-     --name neo4j \
-     -p 7474:7474 -p 7687:7687 \
-     -e NEO4J_AUTH=neo4j/password \
-     -e NEO4J_PLUGINS=\[\"apoc\"\] \
-     neo4j:5.15
-   ```
-
-2. 配置Neo4j连接信息：将`config.json.example`复制为`config.json`，并填写Neo4j连接信息
-
-   ```bash
-   cp config.json.example config.json
-   # 然后编辑config.json文件
-   ```
-
-3. 安装Neo4j-GraphRAG所需的插件
-
-   - APOC插件：提供高级功能
-   - Vector插件：提供向量搜索功能
-
-## 启动服务
-
+### 方式二：仅启动 API
 ```bash
 python -m poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
-## Neo4j浏览器
-访问：http://127.0.0.1:7474/browser/
 
-## Neo4j-GraphRAG集成
+## 测试与质量检查
 
-本系统使用Neo4j-GraphRAG来构建和查询知识图谱。主要功能包括：
-
-1. 自动创建Neo4j子图：每个知识图谱对应一个Neo4j子图
-2. 文本抽取和知识图谱构建：上传文件后，系统会解析文本并使用GraphRAG构建知识图谱
-3. 图谱可视化：支持在前端展示Neo4j知识图谱
-
-### 工作流程
-
-1. 创建知识图谱：会自动创建Neo4j子图
-2. 上传文件：系统解析文件内容
-3. 知识提取：使用GraphRAG提取文本中的实体和关系
-4. 可视化：在前端展示构建的知识图谱
-
-### 环境变量配置（可选）
-
-除了config.json，也可以使用环境变量配置Neo4j和OpenAI：
-
+### 单元测试
+```bash
+python -m poetry run pytest -q
 ```
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=password
-NEO4J_DATABASE=neo4j
-OPENAI_API_KEY=your_openai_key
-``` 
+
+### 指定模块测试
+```bash
+python -m poetry run pytest tests/services -q
+python -m poetry run pytest tests/domain -q
+```
+
+### 语法快速检查
+```bash
+python -m py_compile app/main.py app/services/chat_orchestrator.py app/providers/base.py
+```
+
+## API 文档与测试工作台
+
+### 在线 API 文档
+- Swagger：`/docs`
+- ReDoc：`/redoc`
+
+### 本地测试工作台（`testapi/`）
+```bash
+python -m http.server 8090 --directory testapi
+```
+访问：`http://127.0.0.1:8090/`
+
+## 扩展指南
+
+### 新增模型 Provider
+在 `app/providers/` 下新增模块并继承 `ModelProvider`，实现必要方法后重启服务即可被自动扫描加载。
+
+最小示例：
+```python
+from typing import Any, Dict, List, Optional, Union, AsyncGenerator
+from app.providers.base import ModelProvider
+
+
+class DemoProvider(ModelProvider):
+    @property
+    def provider_id(self) -> str:
+        return "demo"
+
+    @property
+    def provider_name(self) -> str:
+        return "Demo Provider"
+
+    @property
+    def description(self) -> str:
+        return "示例 Provider"
+
+    @property
+    def icon(self) -> Optional[str]:
+        return None
+
+    @property
+    def default_base_url(self) -> Optional[str]:
+        return None
+
+    @property
+    def supported_model_types(self) -> List[str]:
+        return ["chat"]
+
+    @property
+    def features(self) -> List[str]:
+        return ["demo"]
+
+    async def test_connection(self, api_key: str, base_url: Optional[str] = None) -> Dict[str, Any]:
+        return self.build_success_result("ok")
+
+    async def chat_completion(self, api_key: str, messages, model: str, **kwargs) -> Union[Dict[str, Any], AsyncGenerator[Dict[str, Any], None]]:
+        return {"choices": [{"message": {"role": "assistant", "content": "hello"}}]}
+
+    async def text_completion(self, api_key: str, prompt: str, model: str, **kwargs):
+        return {"choices": [{"text": "hello"}]}
+
+    async def embedding(self, api_key: str, text, model: str, **kwargs):
+        return {"data": []}
+```
+
+## 常见问题
+- `ModuleNotFoundError`：请确认在项目根目录执行命令，并使用 `python -m poetry run ...`。
+- API 启动但访问失败：检查 `config.json` 中端口是否被占用。
+- Provider 不显示：确认新增模块位于 `app/providers/`，且类继承 `ModelProvider` 并实现抽象方法。
+- 数据库连接失败：优先检查 `DATABASE_URI` 或 `DB_HOST/DB_PORT/DB_USER/DB_PASSWORD/DB_NAME`。
+
+## 相关文档
+- 架构优化建议：`架构优化建议.md`
+- 架构改动记录：`架构改动文档.md`
+- 继承/委派优化扫描：`继承与委派优化扫描报告.md`
+- 现有补充说明：`README2.md`
+
+## 贡献指南
+- 分支策略：禁止直接推送主分支，统一从 `main` 拉取后创建功能分支，命名建议 `feature/*`、`fix/*`、`refactor/*`、`docs/*`。
+- 代码风格：保持类型注解与清晰命名；复杂逻辑需补充必要中文注释；避免无边界的长函数与重复分支，优先小步重构。
+- 接口变更：涉及请求/响应结构、状态码或权限逻辑时，必须同步更新接口文档与调用示例，并在 PR 描述中标注兼容性影响。
+- 数据与配置变更：修改数据库模型、环境变量、`config.json` 读取逻辑时，必须提供迁移说明、默认值策略与回滚方案。
+- 测试门槛：新增功能或缺陷修复必须附带对应测试；至少保证受影响模块通过 `pytest`；若存在暂不覆盖场景，需在 PR 中说明风险。
+- 提交规范：Commit message 遵循 Conventional Commits，建议使用 `type(scope): subject`，示例见下方。
+- PR 规范：一个 PR 聚焦一个主题，描述需包含变更动机、关键改动、验证步骤、影响范围；涉及 UI/接口行为变化时附截图或调用结果。
+- 文档同步：只要有行为变更，必须同步更新根目录 `README.md` 与相关专题文档（如架构文档、实验文档）。
+
+建议的提交流程：
+```bash
+git checkout main
+git pull
+git checkout -b feature/xxx
+python -m poetry run pytest -q
+git add -A
+git commit -m "feat(scope): concise summary"
+git push -u origin feature/xxx
+```
+
+Commit message 示例：
+```text
+feat(provider): add model retry policy for transient errors
+fix(chat): normalize stream chunk parsing for ollama provider
+refactor(service): extract graph query gateway from retrieval strategy
+docs(readme): refine contribution guidelines and quality gates
+test(services): add chat orchestrator regression cases
+```
+
+## 许可证
+如需开源发布，建议在仓库根目录补充 `LICENSE` 文件并在此处声明许可证类型。

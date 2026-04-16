@@ -13,9 +13,10 @@ from app.application.knowledge.ports import EmbeddingGatewayPort, KnowledgeRepos
 class _TTLCache:
     """进程内轻量缓存：只做短 TTL 热点加速，不做跨进程一致性承诺。"""
 
-    def __init__(self) -> None:
+    def __init__(self, max_entries: int = 256) -> None:
         self._store: Dict[str, Tuple[float, Dict[str, Any]]] = {}
         self._lock = Lock()
+        self._max_entries = max_entries
 
     def get(self, key: str) -> Optional[Dict[str, Any]]:
         now = time.time()
@@ -33,7 +34,19 @@ class _TTLCache:
     def set(self, key: str, value: Dict[str, Any], ttl_seconds: int) -> None:
         expires_at = time.time() + max(ttl_seconds, 1)
         with self._lock:
+            # 轻量防护：控制缓存上限，避免长时间运行进程内缓存无限增长。
+            if len(self._store) >= self._max_entries:
+                self._evict(now=time.time())
             self._store[key] = (expires_at, copy.deepcopy(value))
+
+    def _evict(self, now: float) -> None:
+        expired_keys = [cache_key for cache_key, (expires_at, _) in self._store.items() if expires_at <= now]
+        for cache_key in expired_keys:
+            self._store.pop(cache_key, None)
+        if len(self._store) >= self._max_entries:
+            # 如果清理过期项后仍超限，删除最早过期的一项做兜底。
+            oldest_key = min(self._store.items(), key=lambda item: item[1][0])[0]
+            self._store.pop(oldest_key, None)
 
 
 @dataclass
