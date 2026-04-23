@@ -8,10 +8,10 @@ import anthropic
 from anthropic import Anthropic
 from anthropic._types import NotGiven
 
-from app.providers.base import ModelProvider
+from app.providers.base import BaseHTTPProvider, RequestBuilder
 
 
-class AnthropicProvider(ModelProvider):
+class AnthropicProvider(BaseHTTPProvider):
     """
     Anthropic模型提供商实现
     """
@@ -96,30 +96,25 @@ class AnthropicProvider(ModelProvider):
             base_url=base_url or self.default_base_url
         )
         
-        # 设置请求参数
-        params = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "stream": stream
-        }
-        
-        # 添加可选参数
-        if max_tokens is not None:
-            params["max_tokens"] = max_tokens
-        
-        # 添加其他参数
-        for key, value in kwargs.items():
-            params[key] = value
-        
-        start_time = time.time()
+        params = RequestBuilder.build_payload(
+            required={
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+            },
+            max_tokens=max_tokens,
+            stream=stream,
+            passthrough_kwargs=kwargs,
+            skip_none=False,
+        )
         
         # 处理流式输出
         if stream:
             async def stream_generator():
+                start_time = time.time()
                 try:
                     with client.messages.stream(**params) as stream:
-                        async for chunk in stream:
+                        for chunk in stream:
                             # 计算当前响应时间
                             current_time = time.time()
                             response_time = round((current_time - start_time) * 1000)
@@ -148,37 +143,24 @@ class AnthropicProvider(ModelProvider):
                                     "response_time_ms": response_time
                                 }
                 except Exception as e:
-                    yield {
-                        "status": "error",
-                        "message": f"流式响应失败: {str(e)}"
-                    }
+                    yield self._build_error_result(f"流式响应失败: {str(e)}", code="provider_stream_error")
             
             return stream_generator()
         
         # 处理非流式输出
-        try:
+        async def _operation() -> Dict[str, Any]:
             response = client.messages.create(**params)
-            response_time = round((time.time() - start_time) * 1000)
-            
-            # 处理响应
-            result = {
+            return {
                 "id": response.id,
                 "model": response.model,
                 "content": response.content,
                 "usage": {
                     "input_tokens": response.usage.input_tokens,
                     "output_tokens": response.usage.output_tokens
-                },
-                "response_time_ms": response_time
+                }
             }
-            
-            return result
-        
-        except Exception as e:
-            return {
-                "status": "error",
-                "message": f"聊天完成请求失败: {str(e)}"
-            }
+
+        return await self._execute_timed_dict_call(_operation, error_prefix="聊天完成请求失败")
     
     async def text_completion(
         self,

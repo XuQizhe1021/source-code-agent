@@ -9,10 +9,10 @@ from openai.types.chat import ChatCompletion
 from openai.types.completion import Completion
 from openai.types.create_embedding_response import CreateEmbeddingResponse
 
-from app.providers.base import ModelProvider
+from app.providers.base import BaseHTTPProvider, RequestBuilder
 
 
-class OpenAIProvider(ModelProvider):
+class OpenAIProvider(BaseHTTPProvider):
     """
     OpenAI模型提供商实现
     """
@@ -91,62 +91,31 @@ class OpenAIProvider(ModelProvider):
             api_key=api_key,
             base_url=base_url or self.default_base_url
         )
-        
-        # 设置请求参数
-        params = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "stream": stream
-        }
-        
-        # 添加可选参数
-        if max_tokens is not None:
-            params["max_tokens"] = max_tokens
-        
-        # 添加其他参数
-        for key, value in kwargs.items():
-            params[key] = value
-        
-        start_time = time.time()
-        
-        # 处理流式输出
+        params = RequestBuilder.build_payload(
+            required={
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+            },
+            max_tokens=max_tokens,
+            stream=stream,
+            passthrough_kwargs=kwargs,
+            skip_none=False,
+        )
+
         if stream:
-            async def stream_generator():
-                try:
-                    stream_resp = await client.chat.completions.create(**params)
-                    async for chunk in stream_resp:
-                        # 计算当前响应时间
-                        current_time = time.time()
-                        response_time = round((current_time - start_time) * 1000)
-                        
-                        # 构建chunk响应
-                        chunk_data = chunk.model_dump()
-                        chunk_data["response_time_ms"] = response_time
-                        yield chunk_data
-                except Exception as e:
-                    yield {
-                        "status": "error",
-                        "message": f"流式响应失败: {str(e)}"
-                    }
-            
-            return stream_generator()
+            async def _stream_factory():
+                stream_resp = await client.chat.completions.create(**params)
+                async for chunk in stream_resp:
+                    yield chunk.model_dump()
+
+            return self._wrap_stream_generator(_stream_factory, error_prefix="流式响应失败")
         
-        # 处理非流式输出
-        try:
+        async def _operation() -> Dict[str, Any]:
             response: ChatCompletion = await client.chat.completions.create(**params)
-            response_time = round((time.time() - start_time) * 1000)
-            
-            # 处理响应
-            result = response.model_dump()
-            result["response_time_ms"] = response_time
-            return result
+            return response.model_dump()
         
-        except Exception as e:
-            return {
-                "status": "error",
-                "message": f"聊天完成请求失败: {str(e)}"
-            }
+        return await self._execute_timed_dict_call(_operation, error_prefix="聊天完成请求失败")
     
     async def text_completion(
         self,
@@ -164,62 +133,31 @@ class OpenAIProvider(ModelProvider):
             api_key=api_key,
             base_url=base_url or self.default_base_url
         )
-        
-        # 设置请求参数
-        params = {
-            "model": model,
-            "prompt": prompt,
-            "temperature": temperature,
-            "stream": stream
-        }
-        
-        # 添加可选参数
-        if max_tokens is not None:
-            params["max_tokens"] = max_tokens
-        
-        # 添加其他参数
-        for key, value in kwargs.items():
-            params[key] = value
-        
-        start_time = time.time()
-        
-        # 处理流式输出
+        params = RequestBuilder.build_payload(
+            required={
+                "model": model,
+                "prompt": prompt,
+                "temperature": temperature,
+            },
+            max_tokens=max_tokens,
+            stream=stream,
+            passthrough_kwargs=kwargs,
+            skip_none=False,
+        )
+
         if stream:
-            async def stream_generator():
-                try:
-                    stream_resp = await client.completions.create(**params)
-                    async for chunk in stream_resp:
-                        # 计算当前响应时间
-                        current_time = time.time()
-                        response_time = round((current_time - start_time) * 1000)
-                        
-                        # 构建chunk响应
-                        chunk_data = chunk.model_dump()
-                        chunk_data["response_time_ms"] = response_time
-                        yield chunk_data
-                except Exception as e:
-                    yield {
-                        "status": "error",
-                        "message": f"流式响应失败: {str(e)}"
-                    }
-            
-            return stream_generator()
+            async def _stream_factory():
+                stream_resp = await client.completions.create(**params)
+                async for chunk in stream_resp:
+                    yield chunk.model_dump()
+
+            return self._wrap_stream_generator(_stream_factory, error_prefix="流式响应失败")
         
-        # 处理非流式输出
-        try:
+        async def _operation() -> Dict[str, Any]:
             response: Completion = await client.completions.create(**params)
-            response_time = round((time.time() - start_time) * 1000)
-            
-            # 处理响应
-            result = response.model_dump()
-            result["response_time_ms"] = response_time
-            return result
+            return response.model_dump()
         
-        except Exception as e:
-            return {
-                "status": "error",
-                "message": f"文本完成请求失败: {str(e)}"
-            }
+        return await self._execute_timed_dict_call(_operation, error_prefix="文本完成请求失败")
     
     async def embedding(
         self,
@@ -230,37 +168,24 @@ class OpenAIProvider(ModelProvider):
         **kwargs
     ) -> Dict[str, Any]:
         """获取文本嵌入向量从OpenAI API"""
-        try:
-            client = AsyncOpenAI(
-                api_key=api_key,
-                base_url=base_url or self.default_base_url
-            )
-            
-            # 设置请求参数
-            params = {
+        client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=base_url or self.default_base_url
+        )
+        params = RequestBuilder.build_payload(
+            required={
                 "model": model,
                 "input": text,
-            }
-            
-            # 添加其他参数
-            for key, value in kwargs.items():
-                params[key] = value
-            
-            # 发送请求
-            start_time = time.time()
+            },
+            passthrough_kwargs=kwargs,
+            skip_none=False,
+        )
+
+        async def _operation() -> Dict[str, Any]:
             response: CreateEmbeddingResponse = await client.embeddings.create(**params)
-            response_time = round((time.time() - start_time) * 1000)
-            
-            # 处理响应
-            result = response.model_dump()
-            result["response_time_ms"] = response_time
-            return result
-        
-        except Exception as e:
-            return {
-                "status": "error",
-                "message": f"嵌入向量请求失败: {str(e)}"
-            }
+            return response.model_dump()
+
+        return await self._execute_timed_dict_call(_operation, error_prefix="嵌入向量请求失败")
             
     async def image_analysis(
         self,

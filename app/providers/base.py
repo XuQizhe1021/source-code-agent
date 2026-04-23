@@ -1,8 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List, Union, AsyncGenerator
-import aiohttp
-import json
-import asyncio
+from typing import Dict, Any, Optional, List, Union, AsyncGenerator, Callable, Awaitable, Tuple
+import time
 
 from app.schemas.model import ProviderInfo
 
@@ -226,6 +224,141 @@ class ModelProvider(ABC):
             "supported_types": self.supported_model_types,
             "features": self.features
         } 
+
+
+class RequestBuilder:
+    """请求参数构建器，统一处理可选参数与空值过滤。"""
+
+    @staticmethod
+    def build_payload(
+        required: Dict[str, Any],
+        *,
+        max_tokens: Optional[int] = None,
+        stream: Optional[bool] = None,
+        max_tokens_key: str = "max_tokens",
+        passthrough_kwargs: Optional[Dict[str, Any]] = None,
+        skip_none: bool = True,
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = dict(required)
+        if max_tokens is not None:
+            payload[max_tokens_key] = max_tokens
+        if stream is not None:
+            payload["stream"] = stream
+        for key, value in (passthrough_kwargs or {}).items():
+            if skip_none and value is None:
+                continue
+            payload[key] = value
+        return payload
+
+    @staticmethod
+    def build_headers(api_key: str, *, include_json: bool = True, extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+        headers: Dict[str, str] = {"Authorization": f"Bearer {api_key}"}
+        if include_json:
+            headers["Content-Type"] = "application/json"
+        if extra:
+            headers.update(extra)
+        return headers
+
+    @staticmethod
+    def normalize_base_url(base_url: Optional[str], default_base_url: Optional[str]) -> Optional[str]:
+        target = base_url or default_base_url
+        if not isinstance(target, str):
+            return target
+        return target.rstrip("/")
+
+
+class StreamResponseParser:
+    """流式响应解析器，负责SSE与按行JSON切片。"""
+
+    @staticmethod
+    def parse_sse_buffer(buffer: str) -> Tuple[List[str], str]:
+        events: List[str] = []
+        while "\n\n" in buffer:
+            event, buffer = buffer.split("\n\n", 1)
+            for line in event.split("\n"):
+                if line.startswith("data: "):
+                    payload = line[6:].strip()
+                    if payload:
+                        events.append(payload)
+        return events, buffer
+
+    @staticmethod
+    def parse_json_line_buffer(buffer: str) -> Tuple[List[str], str]:
+        lines: List[str] = []
+        while "\n" in buffer:
+            line, buffer = buffer.split("\n", 1)
+            line = line.strip()
+            if line:
+                lines.append(line)
+        return lines, buffer
+
+
+class BaseHTTPProvider(ModelProvider, ABC):
+    """
+    HTTP Provider模板基类。
+    统一处理：
+    1. 请求计时
+    2. 错误语义包装
+    3. 流式块响应附加耗时
+    """
+
+    def _build_error_result(self, message: str, *, code: str = "provider_error") -> Dict[str, Any]:
+        return {
+            "status": "error",
+            "message": message,
+            "error": {
+                "code": code,
+                "provider": self.provider_id
+            }
+        }
+
+    def _build_connection_failed_result(self, message: str, *, code: str = "connection_failed") -> Dict[str, Any]:
+        return self.build_failed_result(message=message, code=code)
+
+    async def _execute_timed_dict_call(
+        self,
+        operation: Callable[[], Awaitable[Dict[str, Any]]],
+        *,
+        error_prefix: str,
+        error_code: str = "provider_error",
+    ) -> Dict[str, Any]:
+        start_time = time.time()
+        try:
+            result = await operation()
+            if isinstance(result, dict) and "response_time_ms" not in result:
+                result["response_time_ms"] = round((time.time() - start_time) * 1000)
+            return result
+        except Exception as exc:
+            return self._build_error_result(
+                message=f"{error_prefix}: {str(exc)}",
+                code=error_code
+            )
+
+    def _wrap_stream_generator(
+        self,
+        stream_factory: Callable[[], AsyncGenerator[Any, None]],
+        *,
+        error_prefix: str,
+        error_code: str = "provider_stream_error",
+    ) -> AsyncGenerator[Any, None]:
+        start_time = time.time()
+
+        async def _generator():
+            try:
+                async for chunk in stream_factory():
+                    response_time = round((time.time() - start_time) * 1000)
+                    if isinstance(chunk, dict):
+                        chunk.setdefault("response_time_ms", response_time)
+                        yield chunk
+                        continue
+                    yield chunk
+            except Exception as exc:
+                yield self._build_error_result(
+                    message=f"{error_prefix}: {str(exc)}",
+                    code=error_code
+                )
+
+        return _generator()
 
 class MCPServiceProvider(ABC):
     """MCP服务提供商基类，所有MCP服务提供商实现都应该继承此类"""

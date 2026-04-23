@@ -7,10 +7,10 @@ from typing import Dict, Any, Optional, List, Union, AsyncGenerator
 import aiohttp
 from aiohttp.client_exceptions import ClientError
 
-from app.providers.base import ModelProvider
+from app.providers.base import BaseHTTPProvider, RequestBuilder, StreamResponseParser
 
 
-class OllamaProvider(ModelProvider):
+class OllamaProvider(BaseHTTPProvider):
     """
     Ollama模型提供商实现
     提供对本地或远程Ollama服务的访问
@@ -46,43 +46,36 @@ class OllamaProvider(ModelProvider):
     
     async def test_connection(self, api_key: str, base_url: Optional[str] = None) -> Dict[str, Any]:
         """测试与Ollama API的连接"""
-        try:
-            start_time = time.time()
-            
-            # Ollama不需要API密钥，但我们保留参数以兼容接口
-            url = f"{base_url or self.default_base_url}/api/tags"
-            
+        normalized_base_url = RequestBuilder.normalize_base_url(base_url, self.default_base_url)
+
+        async def _operation() -> Dict[str, Any]:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
+                async with session.get(f"{normalized_base_url}/api/tags") as response:
                     if response.status != 200:
-                        return {
-                            "status": "failed",
-                            "message": f"连接失败: HTTP {response.status}"
-                        }
-                    
+                        return self._build_connection_failed_result(f"连接失败: HTTP {response.status}")
                     data = await response.json()
-                    
-            response_time = round((time.time() - start_time) * 1000)
-            
-            # 提取可用模型列表
+
             models = []
             if "models" in data:
                 models = [model["name"] for model in data["models"][:5]]
-            
-            return {
-                "status": "success",
-                "message": "连接成功",
-                "response": {
+            return self.build_success_result(
+                "连接成功",
+                {
                     "model": "Ollama API",
                     "available_models": models,
-                    "responseTime": f"{response_time}ms"
                 }
-            }
-        except Exception as e:
-            return {
-                "status": "failed",
-                "message": f"连接失败: {str(e)}"
-            }
+            )
+
+        result = await self._execute_timed_dict_call(_operation, error_prefix="连接失败", error_code="connection_failed")
+        if result.get("status") == "error":
+            return self._build_connection_failed_result(result.get("message", "连接失败"))
+        if result.get("status") == "success":
+            response = result.get("response", {})
+            if isinstance(response, dict):
+                response_time = result.get("response_time_ms", -1)
+                response["responseTime"] = f"{response_time}ms" if isinstance(response_time, int) else "-1ms"
+            return result
+        return result
     
     async def chat_completion(
         self, 
@@ -96,8 +89,7 @@ class OllamaProvider(ModelProvider):
         **kwargs
     ) -> Union[Dict[str, Any], AsyncGenerator[Dict[str, Any], None]]:
         """发送聊天完成请求到Ollama API，支持流式输出"""
-        # Ollama的聊天API端点
-        url = f"{base_url or self.default_base_url}/api/chat"
+        normalized_base_url = RequestBuilder.normalize_base_url(base_url, self.default_base_url)
         
         # 处理系统消息和用户消息
         formatted_messages = []
@@ -109,14 +101,15 @@ class OllamaProvider(ModelProvider):
                 })
         
         # 设置请求参数
-        params = {
-            "model": model,
-            "messages": formatted_messages,
-            "stream": stream,
-            "options": {
-                "temperature": temperature
-            }
-        }
+        params = RequestBuilder.build_payload(
+            required={
+                "model": model,
+                "messages": formatted_messages,
+            },
+            stream=stream,
+            passthrough_kwargs={},
+        )
+        params["options"] = {"temperature": temperature}
         
         # 处理max_tokens参数
         if max_tokens is not None:
@@ -127,86 +120,53 @@ class OllamaProvider(ModelProvider):
             if key not in ["model", "messages", "stream", "options"]:
                 params["options"][key] = value
         
-        start_time = time.time()
-        
-        # 处理流式输出
         if stream:
-            async def stream_generator():
-                try:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.post(url, json=params) as response:
-                            if response.status != 200:
-                                yield {
-                                    "status": "error",
-                                    "message": f"请求失败: HTTP {response.status}"
-                                }
-                                return
-                            
-                            # 获取流式响应
-                            buffer = ""
-                            async for line in response.content:
-                                if line:
-                                    buffer += line.decode('utf-8')
-                                    if buffer.endswith('\n'):
-                                        # 处理完整的JSON对象
-                                        try:
-                                            chunk = json.loads(buffer.strip())
-                                            current_time = time.time()
-                                            response_time = round((current_time - start_time) * 1000)
-                                            
-                                            # 转换Ollama格式到标准格式
-                                            result = {
-                                                "id": f"chatcmpl-{time.time()}",
-                                                "object": "chat.completion.chunk",
-                                                "created": int(time.time()),
-                                                "model": model,
-                                                "choices": [
-                                                    {
-                                                        "index": 0,
-                                                        "delta": {
-                                                            "role": "assistant",
-                                                            "content": chunk.get("message", {}).get("content", "")
-                                                        },
-                                                        "finish_reason": "stop" if chunk.get("done", False) else None
-                                                    }
-                                                ],
-                                                "response_time_ms": response_time
+            async def _stream_factory() -> AsyncGenerator[Dict[str, Any], None]:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(f"{normalized_base_url}/api/chat", json=params) as response:
+                        if response.status != 200:
+                            yield self._build_error_result(f"请求失败: HTTP {response.status}", code="http_error")
+                            return
+                        buffer = ""
+                        async for line in response.content:
+                            if not line:
+                                continue
+                            buffer += line.decode("utf-8")
+                            json_lines, buffer = StreamResponseParser.parse_json_line_buffer(buffer)
+                            for line_text in json_lines:
+                                try:
+                                    chunk = json.loads(line_text)
+                                    yield {
+                                        "id": f"chatcmpl-{chunk.get('created_at', 'ollama')}",
+                                        "object": "chat.completion.chunk",
+                                        "created": 0,
+                                        "model": model,
+                                        "choices": [
+                                            {
+                                                "index": 0,
+                                                "delta": {
+                                                    "role": "assistant",
+                                                    "content": chunk.get("message", {}).get("content", "")
+                                                },
+                                                "finish_reason": "stop" if chunk.get("done", False) else None
                                             }
-                                            # 将结果转换为JSON字符串
-                                            yield json.dumps(result,ensure_ascii=False)
-                                            
-                                            if chunk.get("done", False):
-                                                break
-                                                
-                                        except json.JSONDecodeError:
-                                            # 处理不完整的JSON
-                                            pass
-                                        
-                                        buffer = ""
-                except Exception as e:
-                    yield {
-                        "status": "error",
-                        "message": f"流式响应失败: {str(e)}"
-                    }
-            
-            return stream_generator()
-        
-        # 处理非流式输出
-        try:
+                                        ],
+                                    }
+                                    if chunk.get("done", False):
+                                        return
+                                except json.JSONDecodeError:
+                                    yield self._build_error_result(f"无法解析JSON: {line_text}", code="invalid_stream_json")
+
+            return self._wrap_stream_generator(_stream_factory, error_prefix="流式响应失败")
+
+        async def _operation() -> Dict[str, Any]:
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=params) as response:
+                async with session.post(f"{normalized_base_url}/api/chat", json=params) as response:
                     if response.status != 200:
-                        return {
-                            "status": "error",
-                            "message": f"聊天完成请求失败: HTTP {response.status}"
-                        }
-                    
+                        return self._build_error_result(f"聊天完成请求失败: HTTP {response.status}", code="http_error")
                     data = await response.json()
-            
-            response_time = round((time.time() - start_time) * 1000)
-            
-            # 转换Ollama响应格式为类似OpenAI的格式
-            result = {
+
+            return {
                 "id": f"chatcmpl-{time.time()}",
                 "object": "chat.completion",
                 "created": int(time.time()),
@@ -225,17 +185,10 @@ class OllamaProvider(ModelProvider):
                     "prompt_tokens": -1,  # Ollama不提供token统计
                     "completion_tokens": -1,
                     "total_tokens": -1
-                },
-                "response_time_ms": response_time
+                }
             }
-            # 将结果转换为JSON字符串
-            return json.dumps(result,ensure_ascii=False)
-        
-        except Exception as e:
-            return {
-                "status": "error",
-                "message": f"聊天完成请求失败: {str(e)}"
-            }
+
+        return await self._execute_timed_dict_call(_operation, error_prefix="聊天完成请求失败")
     
     async def text_completion(
         self,
@@ -249,18 +202,18 @@ class OllamaProvider(ModelProvider):
         **kwargs
     ) -> Union[Dict[str, Any], AsyncGenerator[Dict[str, Any], None]]:
         """发送文本完成请求到Ollama API，支持流式输出"""
-        # Ollama的生成端点
-        url = f"{base_url or self.default_base_url}/api/generate"
+        normalized_base_url = RequestBuilder.normalize_base_url(base_url, self.default_base_url)
         
         # 设置请求参数
-        params = {
-            "model": model,
-            "prompt": prompt,
-            "stream": stream,
-            "options": {
-                "temperature": temperature
-            }
-        }
+        params = RequestBuilder.build_payload(
+            required={
+                "model": model,
+                "prompt": prompt,
+            },
+            stream=stream,
+            passthrough_kwargs={},
+        )
+        params["options"] = {"temperature": temperature}
         
         # 处理max_tokens参数
         if max_tokens is not None:
@@ -271,83 +224,50 @@ class OllamaProvider(ModelProvider):
             if key not in ["model", "prompt", "stream", "options"]:
                 params["options"][key] = value
         
-        start_time = time.time()
-        
-        # 处理流式输出
         if stream:
-            async def stream_generator():
-                try:
-                    async with aiohttp.ClientSession() as session:
-                        async with session.post(url, json=params) as response:
-                            if response.status != 200:
-                                yield {
-                                    "status": "error",
-                                    "message": f"请求失败: HTTP {response.status}"
-                                }
-                                return
-                            
-                            # 获取流式响应
-                            buffer = ""
-                            async for line in response.content:
-                                if line:
-                                    buffer += line.decode('utf-8')
-                                    if buffer.endswith('\n'):
-                                        # 处理完整的JSON对象
-                                        try:
-                                            chunk = json.loads(buffer.strip())
-                                            current_time = time.time()
-                                            response_time = round((current_time - start_time) * 1000)
-                                            
-                                            # 转换Ollama格式到标准格式
-                                            result = {
-                                                "id": f"cmpl-{time.time()}",
-                                                "object": "text_completion.chunk",
-                                                "created": int(time.time()),
-                                                "model": model,
-                                                "choices": [
-                                                    {
-                                                        "text": chunk.get("response", ""),
-                                                        "index": 0,
-                                                        "finish_reason": "stop" if chunk.get("done", False) else None
-                                                    }
-                                                ],
-                                                "response_time_ms": response_time
+            async def _stream_factory() -> AsyncGenerator[Dict[str, Any], None]:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(f"{normalized_base_url}/api/generate", json=params) as response:
+                        if response.status != 200:
+                            yield self._build_error_result(f"请求失败: HTTP {response.status}", code="http_error")
+                            return
+                        buffer = ""
+                        async for line in response.content:
+                            if not line:
+                                continue
+                            buffer += line.decode("utf-8")
+                            json_lines, buffer = StreamResponseParser.parse_json_line_buffer(buffer)
+                            for line_text in json_lines:
+                                try:
+                                    chunk = json.loads(line_text)
+                                    yield {
+                                        "id": f"cmpl-{chunk.get('created_at', 'ollama')}",
+                                        "object": "text_completion.chunk",
+                                        "created": 0,
+                                        "model": model,
+                                        "choices": [
+                                            {
+                                                "text": chunk.get("response", ""),
+                                                "index": 0,
+                                                "finish_reason": "stop" if chunk.get("done", False) else None
                                             }
-                                            # 将结果转换为JSON字符串
-                                            yield json.dumps(result,ensure_ascii=False)
-                                            
-                                            if chunk.get("done", False):
-                                                break
-                                                
-                                        except json.JSONDecodeError:
-                                            # 处理不完整的JSON
-                                            pass
-                                        
-                                        buffer = ""
-                except Exception as e:
-                    yield {
-                        "status": "error",
-                        "message": f"流式响应失败: {str(e)}"
-                    }
-            
-            return stream_generator()
-        
-        # 处理非流式输出
-        try:
+                                        ],
+                                    }
+                                    if chunk.get("done", False):
+                                        return
+                                except json.JSONDecodeError:
+                                    yield self._build_error_result(f"无法解析JSON: {line_text}", code="invalid_stream_json")
+
+            return self._wrap_stream_generator(_stream_factory, error_prefix="流式响应失败")
+
+        async def _operation() -> Dict[str, Any]:
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=params) as response:
+                async with session.post(f"{normalized_base_url}/api/generate", json=params) as response:
                     if response.status != 200:
-                        return {
-                            "status": "error",
-                            "message": f"文本完成请求失败: HTTP {response.status}"
-                        }
-                    
+                        return self._build_error_result(f"文本完成请求失败: HTTP {response.status}", code="http_error")
                     data = await response.json()
-            
-            response_time = round((time.time() - start_time) * 1000)
-            
-            # 转换Ollama响应格式为类似OpenAI的格式
-            result = {
+
+            return {
                 "id": f"cmpl-{time.time()}",
                 "object": "text_completion",
                 "created": int(time.time()),
@@ -363,17 +283,10 @@ class OllamaProvider(ModelProvider):
                     "prompt_tokens": -1,  # Ollama不提供token统计
                     "completion_tokens": -1,
                     "total_tokens": -1
-                },
-                "response_time_ms": response_time
+                }
             }
-            # 将结果转换为JSON字符串
-            return json.dumps(result,ensure_ascii=False)
-        
-        except Exception as e:
-            return {
-                "status": "error",
-                "message": f"文本完成请求失败: {str(e)}"
-            }
+
+        return await self._execute_timed_dict_call(_operation, error_prefix="文本完成请求失败")
     
     async def embedding(
         self,
@@ -384,9 +297,7 @@ class OllamaProvider(ModelProvider):
         **kwargs
     ) -> Dict[str, Any]:
         """获取文本嵌入向量从Ollama API"""
-        # Ollama的嵌入端点
-        url = f"{base_url or self.default_base_url}/api/embeddings"
-        # print('请求URL：：',url)
+        normalized_base_url = RequestBuilder.normalize_base_url(base_url, self.default_base_url)
         # 处理输入文本
         input_texts = []
         if isinstance(text, str):
@@ -394,11 +305,10 @@ class OllamaProvider(ModelProvider):
         else:
             input_texts = text
         
-        # 由于Ollama的API只能一次处理一个文本，我们需要逐个处理
+        # Ollama的嵌入端点一次只处理一条文本，这里统一循环聚合。
         embeddings_list = []
-        start_time = time.time()
-        
-        try:
+
+        async def _operation() -> Dict[str, Any]:
             async with aiohttp.ClientSession() as session:
                 for input_text in input_texts:
                     params = {
@@ -411,22 +321,14 @@ class OllamaProvider(ModelProvider):
                         if key not in ["model", "prompt"]:
                             params[key] = value
                     
-                    async with session.post(url, json=params) as response:
+                    async with session.post(f"{normalized_base_url}/api/embeddings", json=params) as response:
                         if response.status != 200:
-                            return {
-                                "status": "error",
-                                "message": f"嵌入请求失败: HTTP {response.status}"
-                            }
+                            return self._build_error_result(f"嵌入请求失败: HTTP {response.status}", code="http_error")
                         data = await response.json()
-                        # print(data)
-                        
                         if "embedding" in data:
                             embeddings_list.append(data["embedding"])
-            
-            response_time = round((time.time() - start_time) * 1000)
-            
-            # 转换为类似OpenAI的响应格式
-            result = {
+
+            return {
                 "object": "embedding_list",
                 "data": [
                     {
@@ -442,17 +344,9 @@ class OllamaProvider(ModelProvider):
                     "total_tokens": -1
                 },
                 "embeddings": embeddings_list,  # 添加直接可用的嵌入列表
-                "response_time_ms": response_time
             }
-            # print(result)
-            return result
-        
-        except Exception as e:
-            print(e)
-            return {
-                "status": "error",
-                "message": f"嵌入请求失败: {str(e)}"
-            }
+
+        return await self._execute_timed_dict_call(_operation, error_prefix="嵌入请求失败")
     
     async def image_analysis(
         self,

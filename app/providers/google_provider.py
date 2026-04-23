@@ -5,10 +5,10 @@ from typing import Dict, Any, Optional, List, Union, AsyncGenerator
 from google.generativeai import configure, GenerativeModel
 import google.generativeai as genai
 
-from app.providers.base import ModelProvider
+from app.providers.base import BaseHTTPProvider
 
 
-class GoogleProvider(ModelProvider):
+class GoogleProvider(BaseHTTPProvider):
     """
     Google模型提供商实现
     """
@@ -81,110 +81,51 @@ class GoogleProvider(ModelProvider):
         **kwargs
     ) -> Union[Dict[str, Any], AsyncGenerator[Dict[str, Any], None]]:
         """发送聊天完成请求到Google AI API，支持流式输出"""
-        try:
-            # 配置Google API
-            configure(api_key=api_key)
-            
-            # 转换消息格式从OpenAI格式到Google格式
-            google_messages = []
-            for msg in messages:
-                role = msg.get("role", "")
-                content = msg.get("content", "")
-                
-                # Google的API使用"user"和"model"角色，而不是"assistant"
-                if role == "assistant":
-                    role = "model"
-                
-                google_messages.append({"role": role, "parts": [content]})
-            
-            # 设置生成配置
-            generation_config = {
-                "temperature": temperature,
-            }
-            
-            if max_tokens is not None:
-                generation_config["max_output_tokens"] = max_tokens
-            
-            # 创建模型实例
-            gemini_model = GenerativeModel(model, generation_config=generation_config)
-            
-            start_time = time.time()
-            
-            # 处理流式输出
-            if stream:
-                async def stream_generator():
-                    try:
-                        # 创建聊天会话
-                        chat = gemini_model.start_chat(history=google_messages[:-1])
-                        
-                        # 获取最后一条用户消息
-                        last_message = google_messages[-1]["parts"][0] if google_messages else ""
-                        
-                        # 发送流式请求
-                        response_stream = chat.send_message(last_message, stream=True)
-                        
-                        accumulated_text = ""
-                        for chunk in response_stream:
-                            # 计算当前响应时间
+        configure(api_key=api_key)
+
+        google_messages = []
+        for msg in messages:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if role == "assistant":
+                role = "model"
+            google_messages.append({"role": role, "parts": [content]})
+
+        generation_config = {"temperature": temperature}
+        if max_tokens is not None:
+            generation_config["max_output_tokens"] = max_tokens
+        gemini_model = GenerativeModel(model, generation_config=generation_config)
+
+        if stream:
+            async def stream_generator():
+                start_time = time.time()
+                try:
+                    chat = gemini_model.start_chat(history=google_messages[:-1])
+                    last_message = google_messages[-1]["parts"][0] if google_messages else ""
+                    response_stream = chat.send_message(last_message, stream=True)
+                    for chunk in response_stream:
+                        if hasattr(chunk, "text") and chunk.text:
                             current_time = time.time()
                             response_time = round((current_time - start_time) * 1000)
-                            
-                            # 提取当前块的文本
-                            if hasattr(chunk, "text") and chunk.text:
-                                current_chunk = chunk.text
-                                accumulated_text += current_chunk
-                                
-                                # 构建类似OpenAI的响应格式
-                                yield {
-                                    "choices": [
-                                        {
-                                            "delta": {
-                                                "content": current_chunk,
-                                                "role": "assistant"
-                                            }
-                                        }
-                                    ],
-                                    "response_time_ms": response_time
-                                }
-                    except Exception as e:
-                        yield {
-                            "status": "error",
-                            "message": f"流式响应失败: {str(e)}"
-                        }
-                
-                return stream_generator()
-                
-            # 处理非流式输出
-            else:
-                # 创建聊天会话
-                chat = gemini_model.start_chat(history=google_messages[:-1])
-                
-                # 获取最后一条用户消息
-                last_message = google_messages[-1]["parts"][0] if google_messages else ""
-                
-                # 发送请求
-                response = chat.send_message(last_message)
-                response_time = round((time.time() - start_time) * 1000)
-                
-                # 构建类似OpenAI的响应格式
-                return {
-                    "choices": [
-                        {
-                            "message": {
-                                "content": response.text,
-                                "role": "assistant"
+                            yield {
+                                "choices": [{"delta": {"content": chunk.text, "role": "assistant"}}],
+                                "response_time_ms": response_time
                             }
-                        }
-                    ],
-                    "model": model,
-                    "response_time_ms": response_time
-                }
-                
-        except Exception as e:
+                except Exception as e:
+                    yield self._build_error_result(f"流式响应失败: {str(e)}", code="provider_stream_error")
+
+            return stream_generator()
+
+        async def _operation() -> Dict[str, Any]:
+            chat = gemini_model.start_chat(history=google_messages[:-1])
+            last_message = google_messages[-1]["parts"][0] if google_messages else ""
+            response = chat.send_message(last_message)
             return {
-                "status": "error",
-                "message": f"聊天完成请求失败: {str(e)}"
+                "choices": [{"message": {"content": response.text, "role": "assistant"}}],
+                "model": model,
             }
+
+        return await self._execute_timed_dict_call(_operation, error_prefix="聊天完成请求失败")
     
     async def text_completion(
         self,
@@ -222,19 +163,10 @@ class GoogleProvider(ModelProvider):
         **kwargs
     ) -> Dict[str, Any]:
         """获取文本嵌入向量从Google AI API"""
-        try:
-            # 配置Google API
-            configure(api_key=api_key)
-            
-            start_time = time.time()
-            
-            # 确保文本是列表形式
-            if isinstance(text, str):
-                texts = [text]
-            else:
-                texts = text
-            
-            # 获取嵌入向量
+        configure(api_key=api_key)
+
+        async def _operation() -> Dict[str, Any]:
+            texts = [text] if isinstance(text, str) else text
             embeddings = []
             for t in texts:
                 result = genai.embed_content(
@@ -247,18 +179,9 @@ class GoogleProvider(ModelProvider):
                     "embedding": result["embedding"],
                     "index": len(embeddings)
                 })
-            
-            response_time = round((time.time() - start_time) * 1000)
-            
-            # 返回结果
             return {
                 "data": embeddings,
                 "model": model,
-                "response_time_ms": response_time
             }
-            
-        except Exception as e:
-            return {
-                "status": "error",
-                "message": f"嵌入请求失败: {str(e)}"
-            } 
+
+        return await self._execute_timed_dict_call(_operation, error_prefix="嵌入请求失败")

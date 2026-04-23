@@ -1,12 +1,11 @@
-import time
 import json
 from typing import Dict, Any, Optional, List, Union, AsyncGenerator
 import httpx
 
-from app.providers.base import ModelProvider
+from app.providers.base import BaseHTTPProvider, RequestBuilder, StreamResponseParser
 
 
-class CustomProvider(ModelProvider):
+class CustomProvider(BaseHTTPProvider):
     """
     自定义模型提供商，允许用户连接任何与OpenAI兼容的API
     """
@@ -42,48 +41,35 @@ class CustomProvider(ModelProvider):
     async def test_connection(self, api_key: str, base_url: Optional[str] = None) -> Dict[str, Any]:
         """测试与自定义API的连接"""
         if not base_url:
-            return {
-                "status": "failed",
-                "message": "自定义API必须提供基础URL"
-            }
-        
-        try:
-            start_time = time.time()
-            
-            # 尝试获取模型列表，简单测试连接
+            return self._build_connection_failed_result("自定义API必须提供基础URL", code="missing_base_url")
+
+        normalized_base_url = RequestBuilder.normalize_base_url(base_url, self.default_base_url)
+
+        async def _operation() -> Dict[str, Any]:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                headers = {
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
-                }
-                
-                # 尝试列出模型或发送简单请求
                 response = await client.get(
-                    f"{base_url}/models",
-                    headers=headers
+                    f"{normalized_base_url}/models",
+                    headers=RequestBuilder.build_headers(api_key)
                 )
-                
                 if response.status_code != 200:
-                    return {
-                        "status": "failed",
-                        "message": f"API返回错误: {response.status_code} - {response.text}"
-                    }
-                
-                response_time = round((time.time() - start_time) * 1000)
-                
-                return {
-                    "status": "success",
-                    "message": "连接成功",
-                    "response": {
-                        "model": "自定义API",
-                        "responseTime": f"{response_time}ms"
-                    }
-                }
-        except Exception as e:
-            return {
-                "status": "failed",
-                "message": f"连接失败: {str(e)}"
-            }
+                    return self._build_connection_failed_result(
+                        f"API返回错误: {response.status_code} - {response.text}"
+                    )
+                return self.build_success_result(
+                    "连接成功",
+                    {"model": "自定义API"}
+                )
+
+        result = await self._execute_timed_dict_call(_operation, error_prefix="连接失败", error_code="connection_failed")
+        if result.get("status") == "error":
+            return self._build_connection_failed_result(result.get("message", "连接失败"))
+        if result.get("status") == "success":
+            response = result.get("response", {})
+            if isinstance(response, dict):
+                response_time = result.get("response_time_ms", -1)
+                response["responseTime"] = f"{response_time}ms" if isinstance(response_time, int) else "-1ms"
+            return result
+        return result
     
     async def chat_completion(
         self, 
@@ -98,121 +84,64 @@ class CustomProvider(ModelProvider):
     ) -> Union[Dict[str, Any], AsyncGenerator[Dict[str, Any], None]]:
         """发送聊天完成请求到自定义API，支持流式输出"""
         if not base_url:
-            return {
-                "status": "error",
-                "message": "自定义API必须提供基础URL"
-            }
-        
-        # 构建请求数据
-        data = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "stream": stream
-        }
-        
-        # 添加可选参数
-        if max_tokens:
-            data["max_tokens"] = max_tokens
-            
-        # 添加其他参数
-        for key, value in kwargs.items():
-            if value is not None:
-                data[key] = value
-        
-        # 准备请求头
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        start_time = time.time()
-        
-        # 处理流式输出
+            return self._build_error_result("自定义API必须提供基础URL", code="missing_base_url")
+
+        normalized_base_url = RequestBuilder.normalize_base_url(base_url, self.default_base_url)
+        data = RequestBuilder.build_payload(
+            required={
+                "model": model,
+                "messages": messages,
+                "temperature": temperature,
+            },
+            max_tokens=max_tokens,
+            stream=stream,
+            passthrough_kwargs=kwargs
+        )
+        headers = RequestBuilder.build_headers(api_key)
+
         if stream:
-            async def stream_generator():
-                try:
-                    async with httpx.AsyncClient(timeout=60.0) as client:
-                        async with client.stream(
-                            "POST",
-                            f"{base_url}/chat/completions",
-                            headers=headers,
-                            json=data,
-                            timeout=None
-                        ) as response:
-                            if response.status_code != 200:
-                                yield {
-                                    "status": "error",
-                                    "message": f"API返回错误: {response.status_code}"
-                                }
-                                return
-                                
-                            # 处理SSE流
-                            buffer = ""
-                            async for chunk in response.aiter_text():
-                                buffer += chunk
-                                
-                                # 处理缓冲区中的SSE事件
-                                while "\n\n" in buffer:
-                                    event, buffer = buffer.split("\n\n", 1)
-                                    
-                                    for line in event.split("\n"):
-                                        if line.startswith("data: "):
-                                            data_str = line[6:]
-                                            
-                                            # 跳过[DONE]消息
-                                            if data_str.strip() == "[DONE]":
-                                                continue
-                                                
-                                            try:
-                                                # 解析JSON数据
-                                                data_json = json.loads(data_str)
-                                                
-                                                # 添加响应时间
-                                                current_time = time.time()
-                                                response_time = round((current_time - start_time) * 1000)
-                                                data_json["response_time_ms"] = response_time
-                                                
-                                                yield data_json
-                                            except json.JSONDecodeError:
-                                                yield {
-                                                    "status": "error",
-                                                    "message": f"无法解析JSON: {data_str}"
-                                                }
-                except Exception as e:
-                    yield {
-                        "status": "error",
-                        "message": f"流式响应失败: {str(e)}"
-                    }
-            
-            return stream_generator()
-        
-        # 处理非流式输出
-        try:
+            async def _stream_factory() -> AsyncGenerator[Dict[str, Any], None]:
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{normalized_base_url}/chat/completions",
+                        headers=headers,
+                        json=data,
+                        timeout=None
+                    ) as response:
+                        if response.status_code != 200:
+                            yield self._build_error_result(f"API返回错误: {response.status_code}", code="http_error")
+                            return
+                        buffer = ""
+                        async for chunk in response.aiter_text():
+                            buffer += chunk
+                            payloads, buffer = StreamResponseParser.parse_sse_buffer(buffer)
+                            for payload in payloads:
+                                if payload == "[DONE]":
+                                    continue
+                                try:
+                                    yield json.loads(payload)
+                                except json.JSONDecodeError:
+                                    yield self._build_error_result(f"无法解析JSON: {payload}", code="invalid_stream_json")
+
+            return self._wrap_stream_generator(_stream_factory, error_prefix="流式响应失败")
+
+        async def _operation() -> Dict[str, Any]:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
-                    f"{base_url}/chat/completions",
+                    f"{normalized_base_url}/chat/completions",
                     headers=headers,
                     json=data
                 )
-                
-                response_time = round((time.time() - start_time) * 1000)
-                
                 if response.status_code != 200:
-                    return {
-                        "status": "error",
-                        "message": f"API返回错误: {response.status_code} - {response.text}"
-                    }
-                
+                    return self._build_error_result(
+                        f"API返回错误: {response.status_code} - {response.text}",
+                        code="http_error"
+                    )
                 result = response.json()
-                result["response_time_ms"] = response_time
                 return result
-        
-        except Exception as e:
-            return {
-                "status": "error",
-                "message": f"聊天完成请求失败: {str(e)}"
-            }
+
+        return await self._execute_timed_dict_call(_operation, error_prefix="聊天完成请求失败")
     
     async def text_completion(
         self,
@@ -227,121 +156,64 @@ class CustomProvider(ModelProvider):
     ) -> Union[Dict[str, Any], AsyncGenerator[Dict[str, Any], None]]:
         """发送文本完成请求到自定义API，支持流式输出"""
         if not base_url:
-            return {
-                "status": "error",
-                "message": "自定义API必须提供基础URL"
-            }
-        
-        # 构建请求数据
-        data = {
-            "model": model,
-            "prompt": prompt,
-            "temperature": temperature,
-            "stream": stream
-        }
-        
-        # 添加可选参数
-        if max_tokens:
-            data["max_tokens"] = max_tokens
-            
-        # 添加其他参数
-        for key, value in kwargs.items():
-            if value is not None:
-                data[key] = value
-        
-        # 准备请求头
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        start_time = time.time()
-        
-        # 处理流式输出
+            return self._build_error_result("自定义API必须提供基础URL", code="missing_base_url")
+
+        normalized_base_url = RequestBuilder.normalize_base_url(base_url, self.default_base_url)
+        data = RequestBuilder.build_payload(
+            required={
+                "model": model,
+                "prompt": prompt,
+                "temperature": temperature,
+            },
+            max_tokens=max_tokens,
+            stream=stream,
+            passthrough_kwargs=kwargs
+        )
+        headers = RequestBuilder.build_headers(api_key)
+
         if stream:
-            async def stream_generator():
-                try:
-                    async with httpx.AsyncClient(timeout=60.0) as client:
-                        async with client.stream(
-                            "POST",
-                            f"{base_url}/completions",
-                            headers=headers,
-                            json=data,
-                            timeout=None
-                        ) as response:
-                            if response.status_code != 200:
-                                yield {
-                                    "status": "error",
-                                    "message": f"API返回错误: {response.status_code}"
-                                }
-                                return
-                                
-                            # 处理SSE流
-                            buffer = ""
-                            async for chunk in response.aiter_text():
-                                buffer += chunk
-                                
-                                # 处理缓冲区中的SSE事件
-                                while "\n\n" in buffer:
-                                    event, buffer = buffer.split("\n\n", 1)
-                                    
-                                    for line in event.split("\n"):
-                                        if line.startswith("data: "):
-                                            data_str = line[6:]
-                                            
-                                            # 跳过[DONE]消息
-                                            if data_str.strip() == "[DONE]":
-                                                continue
-                                                
-                                            try:
-                                                # 解析JSON数据
-                                                data_json = json.loads(data_str)
-                                                
-                                                # 添加响应时间
-                                                current_time = time.time()
-                                                response_time = round((current_time - start_time) * 1000)
-                                                data_json["response_time_ms"] = response_time
-                                                
-                                                yield data_json
-                                            except json.JSONDecodeError:
-                                                yield {
-                                                    "status": "error",
-                                                    "message": f"无法解析JSON: {data_str}"
-                                                }
-                except Exception as e:
-                    yield {
-                        "status": "error",
-                        "message": f"流式响应失败: {str(e)}"
-                    }
-            
-            return stream_generator()
-        
-        # 处理非流式输出
-        try:
+            async def _stream_factory() -> AsyncGenerator[Dict[str, Any], None]:
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{normalized_base_url}/completions",
+                        headers=headers,
+                        json=data,
+                        timeout=None
+                    ) as response:
+                        if response.status_code != 200:
+                            yield self._build_error_result(f"API返回错误: {response.status_code}", code="http_error")
+                            return
+                        buffer = ""
+                        async for chunk in response.aiter_text():
+                            buffer += chunk
+                            payloads, buffer = StreamResponseParser.parse_sse_buffer(buffer)
+                            for payload in payloads:
+                                if payload == "[DONE]":
+                                    continue
+                                try:
+                                    yield json.loads(payload)
+                                except json.JSONDecodeError:
+                                    yield self._build_error_result(f"无法解析JSON: {payload}", code="invalid_stream_json")
+
+            return self._wrap_stream_generator(_stream_factory, error_prefix="流式响应失败")
+
+        async def _operation() -> Dict[str, Any]:
             async with httpx.AsyncClient(timeout=60.0) as client:
                 response = await client.post(
-                    f"{base_url}/completions",
+                    f"{normalized_base_url}/completions",
                     headers=headers,
                     json=data
                 )
-                
-                response_time = round((time.time() - start_time) * 1000)
-                
                 if response.status_code != 200:
-                    return {
-                        "status": "error",
-                        "message": f"API返回错误: {response.status_code} - {response.text}"
-                    }
-                
+                    return self._build_error_result(
+                        f"API返回错误: {response.status_code} - {response.text}",
+                        code="http_error"
+                    )
                 result = response.json()
-                result["response_time_ms"] = response_time
                 return result
-        
-        except Exception as e:
-            return {
-                "status": "error",
-                "message": f"文本完成请求失败: {str(e)}"
-            }
+
+        return await self._execute_timed_dict_call(_operation, error_prefix="文本完成请求失败")
     
     async def embedding(
         self,
@@ -353,52 +225,29 @@ class CustomProvider(ModelProvider):
     ) -> Dict[str, Any]:
         """获取文本嵌入向量从自定义API"""
         if not base_url:
-            return {
-                "status": "error",
-                "message": "自定义API必须提供基础URL"
-            }
-        
-        try:
-            start_time = time.time()
-            
-            # 构建请求数据
-            data = {
+            return self._build_error_result("自定义API必须提供基础URL", code="missing_base_url")
+
+        normalized_base_url = RequestBuilder.normalize_base_url(base_url, self.default_base_url)
+        data = RequestBuilder.build_payload(
+            required={
                 "model": model,
                 "input": text
-            }
-                
-            # 添加其他参数
-            for key, value in kwargs.items():
-                if value is not None:
-                    data[key] = value
-            
-            # 发送请求
+            },
+            passthrough_kwargs=kwargs
+        )
+
+        async def _operation() -> Dict[str, Any]:
             async with httpx.AsyncClient(timeout=60.0) as client:
-                headers = {
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json"
-                }
-                
                 response = await client.post(
-                    f"{base_url}/embeddings",
-                    headers=headers,
+                    f"{normalized_base_url}/embeddings",
+                    headers=RequestBuilder.build_headers(api_key),
                     json=data
                 )
-                
-                response_time = round((time.time() - start_time) * 1000)
-                
                 if response.status_code != 200:
-                    return {
-                        "status": "error",
-                        "message": f"API返回错误: {response.status_code} - {response.text}"
-                    }
-                
-                result = response.json()
-                result["response_time_ms"] = response_time
-                return result
-        
-        except Exception as e:
-            return {
-                "status": "error",
-                "message": f"嵌入请求失败: {str(e)}"
-            } 
+                    return self._build_error_result(
+                        f"API返回错误: {response.status_code} - {response.text}",
+                        code="http_error"
+                    )
+                return response.json()
+
+        return await self._execute_timed_dict_call(_operation, error_prefix="嵌入请求失败")
